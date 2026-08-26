@@ -5,7 +5,6 @@ export interface Env {
 
 const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`;
 const TELEGRAM_FILE_API = (token: string) => `https://api.telegram.org/file/bot${token}`;
-// Google Gemma 4 is multimodal and does not use the Meta Llama license gate.
 const VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
@@ -33,7 +32,7 @@ export default {
       if (chatId) {
         const text = error instanceof Error && /size|large|8.?mb|bytes/i.test(error.message)
           ? "Фото слишком большое. Пришлите фото меньшего размера или сожмите изображение и попробуйте ещё раз."
-          : "Не удалось обработать расклад. Попробуйте ещё раз. Если ошибка повторится, я уже вижу её в логах Cloudflare.";
+          : "Не удалось обработать расклад. Попробуйте ещё раз. Ошибка записана в логах Cloudflare.";
         await sendMessage(env.TELEGRAM_BOT_TOKEN, chatId, text);
       }
     }
@@ -70,25 +69,46 @@ async function downloadTelegramImage(token: string, fileId: string): Promise<Arr
   return imageBuffer;
 }
 
-async function analyzeTarot(env: Env, imageBuffer: ArrayBuffer, question: string): Promise<TarotResult> {
-  const image = [...new Uint8Array(imageBuffer)];
-  const prompt = `Вопрос пользователя:\n${question}\n\nПроанализируй фотографию расклада Таро. Сначала определи только реально видимые карты и их порядок. Для каждой карты укажи название, положение и confidence. Если карта неразборчива — card_name=null. Затем дай общий анализ всех карт именно в контексте вопроса. Не выдумывай схему расклада, если она неочевидна. Ответ должен быть в JSON.`;
-  console.log("[TAROT BOT] Sending image to Workers AI", { bytes: imageBuffer.byteLength, model: VISION_MODEL });
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunk, bytes.length)));
+  }
+  return btoa(binary);
+}
 
+async function analyzeTarot(env: Env, imageBuffer: ArrayBuffer, question: string): Promise<TarotResult> {
+  const base64 = arrayBufferToBase64(imageBuffer);
+  const imageUrl = `data:image/jpeg;base64,${base64}`;
+  const prompt = `Вопрос пользователя:\n${question}\n\nСначала внимательно рассмотри фотографию расклада Таро. Определи только реально видимые карты и их порядок. Для каждой карты укажи название, положение и confidence. Если карта неразборчива — card_name=null. Затем дай общий анализ всех распознанных карт именно в контексте вопроса. Не выдумывай схему расклада, если она неочевидна. Верни только JSON.`;
+
+  console.log("[TAROT BOT] Sending multimodal message to Workers AI", { bytes: imageBuffer.byteLength, model: VISION_MODEL });
+
+  // Gemma 4 expects multimodal content parts. The image is supplied as a base64 data URL
+  // inside the user message rather than as the legacy top-level `image` field.
   const response = await env.AI.run(VISION_MODEL, {
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: prompt }
+      {
+        role: "user",
+        content: [
+          { type: "text", text: prompt },
+          { type: "image_url", image_url: { url: imageUrl } }
+        ]
+      }
     ],
-    image,
     max_tokens: 2200,
     temperature: 0.15
   } as any);
 
-  console.log("[TAROT BOT] Workers AI response received");
-  const raw = typeof response === "string" ? response : (response as any)?.response;
+  console.log("[TAROT BOT] Workers AI response received", { responseType: typeof response });
+  const raw = typeof response === "string"
+    ? response
+    : (response as any)?.response ?? (response as any)?.choices?.[0]?.message?.content;
   if (!raw) throw new Error(`Workers AI returned empty response: ${JSON.stringify(response)}`);
-  return normalizeTarotResult(parseJsonObject(raw));
+  return normalizeTarotResult(parseJsonObject(typeof raw === "string" ? raw : JSON.stringify(raw)));
 }
 
 function parseJsonObject(raw: string): any {
