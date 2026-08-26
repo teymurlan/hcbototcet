@@ -3,7 +3,7 @@ const TELEGRAM_API=(token:string)=>`https://api.telegram.org/bot${token}`;
 const TELEGRAM_FILE_API=(token:string)=>`https://api.telegram.org/file/bot${token}`;
 const VISION_MODEL="@cf/google/gemma-4-26b-a4b-it";
 const MAX_IMAGE_BYTES=8*1024*1024;
-const SYSTEM_PROMPT=`Ты анализируешь фото расклада Таро. Работай только с тем, что видно. Не придумывай карты. Нечитаемая карта: card_name=null, confidence=low. Верни короткий JSON на русском без markdown и без рассуждений. Поля: readable, deck, cards, spread_type, analysis, conclusion, advice. В cards: position, card_name, orientation (upright/reversed/unknown), confidence (high/medium/low).`;
+const SYSTEM_PROMPT=`Ты кратко анализируешь фото расклада Таро. Внимательно рассмотри ВСЕ карты. Не проси фото крупнее, если изображение читаемо. Не выдумывай карты: если конкретная карта не читается, напиши «не определена». Определи количество видимых карт, их названия и дай символическую интерпретацию вопроса. Никаких рассуждений, самокоррекций, повторов и JSON.`;
 interface TelegramUpdate{update_id:number;message?:{message_id:number;chat:{id:number};photo?:Array<{file_id:string;width:number;height:number;file_size?:number}>;caption?:string;text?:string}};
 export default{async fetch(request:Request,env:Env):Promise<Response>{
  if(request.method==="GET")return new Response("Tarot bot is running");
@@ -21,7 +21,8 @@ async function handleUpdate(update:TelegramUpdate,env:Env){
  if(!m.photo?.length){await sendMessage(t,c,"Пришлите фото расклада Таро и вопрос в подписи.");return}
  const q=(m.caption||"").trim();if(!q){await sendMessage(t,c,"Добавьте вопрос в подписи к фотографии и отправьте её ещё раз.");return}
  await sendMessage(t,c,"Фото получил. Распознаю карты и готовлю разбор...");
- const p=m.photo[m.photo.length-1];const file=await downloadTelegramImage(t,p.file_id);const result=await analyzeTarot(env,file.buffer,file.mime,q);await sendMessage(t,c,formatTarotResult(result,q));
+ const p=m.photo.reduce((best,current)=>current.width*current.height>best.width*best.height?current:best,m.photo[0]);
+ const file=await downloadTelegramImage(t,p.file_id);const result=await analyzeTarot(env,file.buffer,file.mime,q);await sendMessage(t,c,formatTarotResult(result,q));
 }
 async function downloadTelegramImage(t:string,id:string):Promise<{buffer:ArrayBuffer;mime:string}>{
  const r=await fetch(`${TELEGRAM_API(t)}/getFile?file_id=${encodeURIComponent(id)}`);if(!r.ok)throw new Error(`Telegram getFile HTTP ${r.status}`);
@@ -32,15 +33,22 @@ async function downloadTelegramImage(t:string,id:string):Promise<{buffer:ArrayBu
  const h=image.headers.get("content-type")?.split(";")[0].trim().toLowerCase();return{buffer,mime:h?.startsWith("image/")?h:"image/jpeg"};
 }
 function toDataUrl(buffer:ArrayBuffer,mime:string){const bytes=new Uint8Array(buffer);let binary="";for(let i=0;i<bytes.length;i+=0x8000)binary+=String.fromCharCode(...bytes.subarray(i,Math.min(i+0x8000,bytes.length)));return`data:${mime};base64,${btoa(binary)}`}
+async function runVision(env:Env,image:string,prompt:string){return await env.AI.run(VISION_MODEL,{messages:[{role:"system",content:SYSTEM_PROMPT},{role:"user",content:prompt}],image,temperature:0.1,max_tokens:1000,chat_template_kwargs:{enable_thinking:false,clear_thinking:true}} as any)}
 async function analyzeTarot(env:Env,buffer:ArrayBuffer,mime:string,q:string){
  const image=toDataUrl(buffer,mime);
- const prompt=`Вопрос: ${q}\n\nПосмотри фото расклада. Посчитай только видимые карты. Не угадывай нечитаемые. Коротко интерпретируй расклад по вопросу. Верни ТОЛЬКО один полный JSON: {"readable":true,"deck":"...","cards":[{"position":1,"card_name":"...","orientation":"upright","confidence":"high"}],"spread_type":"...","analysis":"...","conclusion":"...","advice":"..."}`;
- const response=await env.AI.run(VISION_MODEL,{messages:[{role:"system",content:SYSTEM_PROMPT},{role:"user",content:prompt}],image,temperature:0.2,max_tokens:2400,chat_template_kwargs:{enable_thinking:false,clear_thinking:true}} as any);
- const raw=extractModelText(response);if(!raw){console.error("[TAROT BOT] AI empty",response);throw new Error("Workers AI returned no final answer")}
- return normalize(parseJson(raw));
+ const prompt=`Вопрос: «${q}»\n\nПроанализируй изображение расклада. Ответ строго в формате:\nКАРТЫ: 1) название; 2) название; 3) название; ...\nСХЕМА: кратко, если понятна\nАНАЛИЗ: 3-6 предложений по вопросу\nИТОГ: 1-2 предложения\nСОВЕТ: 1-2 предложения\n\nНе пиши JSON. Не объясняй процесс. Не повторяй текст. Не говори «пришлите фото крупнее», если изображение в целом читаемо.`;
+ let response=await runVision(env,image,prompt);let raw=extractModelText(response);
+ if(!raw){console.error("[TAROT BOT] AI empty first attempt",response);response=await runVision(env,image,`Определи карты на фото и ответь по вопросу «${q}». Очень коротко. Формат:\nКАРТЫ: перечисли все видимые карты через точку с запятой.\nАНАЛИЗ: краткий ответ.\nИТОГ: краткий итог.`);raw=extractModelText(response)}
+ if(!raw){console.error("[TAROT BOT] AI empty retry",response);throw new Error("Workers AI returned no final answer")}
+ return normalizeVisionText(raw);
 }
 function extractModelText(response:any){if(typeof response==="string")return response.trim();if(typeof response?.response==="string"&&response.response.trim())return response.response.trim();const m=response?.choices?.[0]?.message;if(typeof m?.content==="string"&&m.content.trim())return m.content.trim();if(Array.isArray(m?.content))return m.content.map((x:any)=>typeof x==="string"?x:x?.text||"").join("").trim();return""}
-function parseJson(raw:string){const cleaned=raw.replace(/^\s*```json\s*/i,"").replace(/^\s*```\s*/i,"").replace(/\s*```\s*$/i,"").trim();try{return JSON.parse(cleaned)}catch{const s=cleaned.indexOf("{"),e=cleaned.lastIndexOf("}");if(s>=0&&e>s)try{return JSON.parse(cleaned.slice(s,e+1))}catch{}throw new Error(`Invalid AI JSON: ${cleaned.slice(0,500)}`)}}
-function normalize(v:any){const cards=Array.isArray(v?.cards)?v.cards.map((x:any,i:number)=>({position:Number(x?.position)||i+1,card_name:typeof x?.card_name==="string"&&x.card_name.trim()?x.card_name.trim():null,orientation:["upright","reversed","unknown"].includes(x?.orientation)?x.orientation:"unknown",confidence:["high","medium","low"].includes(x?.confidence)?x.confidence:"low"})):[];return{readable:Boolean(v?.readable??cards.some((x:any)=>x.card_name)),deck:typeof v?.deck==="string"?v.deck:"Не определена",cards,spread_type:typeof v?.spread_type==="string"?v.spread_type:"Схема не определена",analysis:typeof v?.analysis==="string"?v.analysis:"Не удалось сформировать анализ.",conclusion:typeof v?.conclusion==="string"?v.conclusion:"Не удалось сформировать итог.",advice:typeof v?.advice==="string"?v.advice:"Не удалось сформировать совет."}}
-function formatTarotResult(r:any,q:string){if(!r.cards?.some((c:any)=>c.card_name))return"Я не смог уверенно распознать карты. Пришлите фото крупнее, чтобы все карты были хорошо видны.";const lines=r.cards.map((c:any,i:number)=>`${Number(c.position)||i+1}. ${c.card_name||"Карта не определена"}${c.orientation==="reversed"?" — перевёрнутая":c.orientation==="upright"?" — прямая":" — положение не определено"}`).join("\n");return`🔮 РАЗБОР РАСКЛАДА\n\nВопрос: ${q}\n\nКарты:\n${lines}\n\nСхема: ${r.spread_type}\n\nОБЩИЙ АНАЛИЗ\n${r.analysis}\n\nИТОГ\n${r.conclusion}\n\nСОВЕТ\n${r.advice}\n\nЭто символическая интерпретация Таро, а не гарантированное предсказание будущего.`}
+function normalizeVisionText(raw:string){
+ const clean=raw.replace(/```[\s\S]*?```/g,x=>x.replace(/```(?:json)?/gi,"")).trim();
+ const cardsMatch=clean.match(/КАРТЫ\s*:\s*([\s\S]*?)(?=\n\s*(?:СХЕМА|АНАЛИЗ|ИТОГ|СОВЕТ)\s*:|$)/i);const cardsText=cardsMatch?.[1]?.trim()||"";
+ const cards=cardsText.split(/\s*(?:;|\n)\s*/).map((s,i)=>s.replace(/^\s*\d+[.)]\s*/,"").trim()).filter(s=>s&& !/^не определена$/i.test(s)).map((name,i)=>({position:i+1,card_name:name.replace(/\s*[—-]\s*(прямая|перевёрнутая|перевернутая).*$/i,"").trim(),orientation:/перев[ёе]рнут/i.test(name)?"reversed":"upright",confidence:"medium"}));
+ const section=(name:string,next:string)=>{const m=clean.match(new RegExp(`${name}\\s*:\\s*([\\s\\S]*?)(?=\\n\\s*(?:${next})\\s*:|$)`i));return m?.[1]?.trim()||""};
+ return{readable:cards.length>0,deck:"По фото",cards,spread_type:section("СХЕМА","АНАЛИЗ|ИТОГ|СОВЕТ")||"Схема не определена",analysis:section("АНАЛИЗ","ИТОГ|СОВЕТ")||clean.slice(0,1200),conclusion:section("ИТОГ","СОВЕТ")||"",advice:section("СОВЕТ","$")||""};
+}
+function formatTarotResult(r:any,q:string){if(!r.cards?.length)return `🔮 Не удалось уверенно определить карты на этом фото. Я уже попробовал повторный анализ.\n\nПопробуйте отправить то же фото ещё раз — не обязательно делать его крупнее.`;const lines=r.cards.map((c:any,i:number)=>`${Number(c.position)||i+1}. ${c.card_name}${c.orientation==="reversed"?" — перевёрнутая":" — прямая"}`).join("\n");return`🔮 РАЗБОР РАСКЛАДА\n\nВопрос: ${q}\n\nКАРТЫ:\n${lines}\n\nСхема: ${r.spread_type}\n\nОБЩИЙ АНАЛИЗ\n${r.analysis}\n\nИТОГ\n${r.conclusion}\n\nСОВЕТ\n${r.advice}\n\nЭто символическая интерпретация Таро, а не гарантированное предсказание будущего.`}
 async function sendMessage(t:string,c:number,text:string){const r=await fetch(`${TELEGRAM_API(t)}/sendMessage`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:c,text,disable_web_page_preview:true})});if(!r.ok)console.error("[TAROT BOT] Telegram sendMessage failed",await r.text())}
