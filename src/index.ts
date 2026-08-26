@@ -7,6 +7,7 @@ const TELEGRAM_API = (token: string) => `https://api.telegram.org/bot${token}`;
 const TELEGRAM_FILE_API = (token: string) => `https://api.telegram.org/file/bot${token}`;
 const VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+const MAX_TELEGRAM_TEXT = 4000;
 
 const SYSTEM_PROMPT = `Ты — таролог-ассистент, который анализирует расклады Таро по фотографии.
 
@@ -28,8 +29,12 @@ export default {
     if (request.method === "GET") return new Response("Tarot bot is running");
     if (request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
-    let update: TelegramUpdate | undefined;
-    try { update = await request.json<TelegramUpdate>(); } catch { return new Response("OK"); }
+    let update: TelegramUpdate;
+    try {
+      update = await request.json<TelegramUpdate>();
+    } catch {
+      return new Response("OK");
+    }
 
     ctx.waitUntil(handleUpdate(update, env));
     return new Response("OK");
@@ -39,6 +44,7 @@ export default {
 async function handleUpdate(update: TelegramUpdate, env: Env) {
   const m = update.message;
   if (!m) return;
+
   const token = env.TELEGRAM_BOT_TOKEN;
   const chatId = m.chat.id;
 
@@ -47,6 +53,7 @@ async function handleUpdate(update: TelegramUpdate, env: Env) {
       await sendMessage(token, chatId, "🔮 Добро пожаловать.\n\nОтправьте фото расклада Таро и вопрос в подписи к фотографии.");
       return;
     }
+
     if (!m.photo?.length) {
       await sendMessage(token, chatId, "Пришлите фотографию расклада Таро и напишите вопрос в подписи.");
       return;
@@ -60,20 +67,28 @@ async function handleUpdate(update: TelegramUpdate, env: Env) {
 
     const waiting = await sendMessage(token, chatId, "⏳ Анализирую расклад, внимательно проверяю все карты на фото...");
     const waitingMessageId = waiting?.message_id;
+
     await sendChatAction(token, chatId, "typing");
 
-    const photo = m.photo.reduce((best, current) =>
-      current.width * current.height > best.width * best.height ? current : best, m.photo[0]);
+    const photo = m.photo.reduce(
+      (best, current) => current.width * current.height > best.width * best.height ? current : best,
+      m.photo[0],
+    );
 
     const file = await downloadTelegramImage(token, photo.file_id);
     const result = await analyzeTarot(env, file.buffer, file.mime, question);
     const answer = formatTarotResult(result, question);
 
     if (waitingMessageId) {
-      const edited = await editMessageText(token, chatId, waitingMessageId, answer);
-      if (!edited) await sendMessage(token, chatId, answer);
+      const first = answer.slice(0, MAX_TELEGRAM_TEXT);
+      const edited = await editMessageText(token, chatId, waitingMessageId, first);
+      if (!edited) {
+        await sendMessage(token, chatId, answer);
+      } else if (answer.length > MAX_TELEGRAM_TEXT) {
+        await sendLongMessage(token, chatId, answer.slice(MAX_TELEGRAM_TEXT));
+      }
     } else {
-      await sendMessage(token, chatId, answer);
+      await sendLongMessage(token, chatId, answer);
     }
   } catch (error) {
     console.error("[TAROT BOT]", error);
@@ -84,16 +99,23 @@ async function handleUpdate(update: TelegramUpdate, env: Env) {
 async function downloadTelegramImage(token: string, fileId: string): Promise<{ buffer: ArrayBuffer; mime: string }> {
   const fileResponse = await fetch(`${TELEGRAM_API(token)}/getFile?file_id=${encodeURIComponent(fileId)}`);
   if (!fileResponse.ok) throw new Error(`Telegram getFile HTTP ${fileResponse.status}`);
+
   const fileJson = await fileResponse.json<any>();
   if (!fileJson.ok || !fileJson.result?.file_path) throw new Error("Telegram getFile failed");
 
   const imageResponse = await fetch(`${TELEGRAM_FILE_API(token)}/${fileJson.result.file_path}`);
   if (!imageResponse.ok) throw new Error(`Telegram image HTTP ${imageResponse.status}`);
+
   const buffer = await imageResponse.arrayBuffer();
-  if (!buffer.byteLength || buffer.byteLength > MAX_IMAGE_BYTES) throw new Error("Image too large or empty");
+  if (!buffer.byteLength || buffer.byteLength > MAX_IMAGE_BYTES) {
+    throw new Error("Image too large or empty");
+  }
 
   const contentType = imageResponse.headers.get("content-type")?.split(";")[0].trim().toLowerCase();
-  return { buffer, mime: contentType?.startsWith("image/") ? contentType : "image/jpeg" };
+  return {
+    buffer,
+    mime: contentType?.startsWith("image/") ? contentType : "image/jpeg",
+  };
 }
 
 function toDataUrl(buffer: ArrayBuffer, mime: string): string {
@@ -106,8 +128,6 @@ function toDataUrl(buffer: ArrayBuffer, mime: string): string {
 }
 
 async function runVision(env: Env, image: string, prompt: string): Promise<any> {
-  // Для Workers AI используем штатный multimodal-формат: image передаётся
-  // отдельным полем, как в официальном примере Cloudflare для vision-моделей.
   return await env.AI.run(VISION_MODEL, {
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
@@ -115,91 +135,139 @@ async function runVision(env: Env, image: string, prompt: string): Promise<any> 
     ],
     image,
     temperature: 0,
-    max_tokens: 1400,
-    chat_template_kwargs: { enable_thinking: false, clear_thinking: true },
+    top_p: 0.1,
+    max_completion_tokens: 2600,
+    reasoning_effort: "low",
+    chat_template_kwargs: {
+      enable_thinking: false,
+      clear_thinking: true,
+    },
   } as any);
 }
 
 async function analyzeTarot(env: Env, buffer: ArrayBuffer, mime: string, question: string) {
   const image = toDataUrl(buffer, mime);
+
   const prompt = `Вопрос пользователя: «${question}»
 
-Сейчас выполни полный анализ фотографии строго по правилам выше.
+Выполни анализ ТОЛЬКО этой фотографии.
 
-ОЧЕНЬ ВАЖНО:
-— Сначала посмотри на ВСЮ фотографию целиком и посчитай физически видимые карты.
-— Затем проверь КАЖДУЮ карту отдельно.
-— Нельзя заранее предполагать, что карт 2, 3, 6 или 9. Количество определяется ТОЛЬКО фотографией.
-— Если на фото 9 карт, перечисли все 9. Если 12 — все 12. Если 3 — все 3.
-— Каждая физически видимая карта обязана иметь свой номер в списке.
-— Не добавляй карту только потому, что она логично подходит к раскладу.
-— Если название не читается уверенно, напиши «Не определена», но физическую карту всё равно сохрани в списке.
+КРИТИЧЕСКИ ВАЖНО:
+— Сначала посмотри на фотографию ЦЕЛИКОМ.
+— Физически пересчитай все отдельные карты, лежащие на столе.
+— Только после этого рассматривай каждую карту по очереди.
+— Количество строк в списке должно РОВНО соответствовать количеству физических карт на фотографии.
+— Нельзя заранее считать, что карт 2, 3, 6 или 9.
+— Если на фотографии 9 физических карт — ОБЯЗАТЕЛЬНО перечисли все 9.
+— Если на фотографии 12 физических карт — перечисли все 12.
+— Если на фотографии 3 физических карты — перечисли все 3.
+— Никогда не добавляй карту из памяти, из значения вопроса или потому, что она подходит по смыслу.
+— Каждая строка списка должна соответствовать ОДНОЙ реально видимой карте.
+— Не объединяй две физические карты в одну строку.
+— Не пропускай физически видимую карту.
+— Проверяй название по ТЕКСТУ и НОМЕРУ, видимым НА САМОЙ КАРТЕ.
+— Если название действительно нельзя прочитать, напиши «Не определена», но эту физическую карту всё равно перечисли.
 — Не заменяй нечитаемую карту другой картой.
-— Не проси фото крупнее, если карта физически различима на исходном фото.
-— Если на фото нет расклада Таро, ответь только: НЕ_ТАРО.
+— Ориентацию определяй по направлению самой карты. Если направление невозможно установить — «положение неизвестно».
+— Не проси пользователя прислать фото крупнее, если исходная карта физически различима.
+— Если на фотографии нет карт Таро, ответь только: НЕ_ТАРО.
 
-ОБЯЗАТЕЛЬНАЯ ПРОВЕРКА ПЕРЕД ОТВЕТОМ:
-1. Посчитай физические карты на фотографии.
-2. Посчитай пункты в разделе «КАРТЫ НА ФОТО».
-3. Эти два числа ОБЯЗАНЫ совпадать.
-4. Проверь, что ни одна карта не появилась в списке без физического изображения на фото.
-5. Проверь, что ни одна физическая карта не пропущена.
-6. Проверь названия по видимому тексту/номеру самой карты.
-7. Весь ответ только на русском языке.
+ПЕРЕД ФОРМИРОВАНИЕМ ОТВЕТА МОЛЧА ПРОВЕРЬ:
+1. Сколько физических карт видно на фотографии.
+2. Сколько карт перечислено в разделе «КАРТЫ НА ФОТО».
+3. Эти количества должны совпадать.
+4. У каждой перечисленной карты должна быть физическая карта на фотографии.
+5. Каждая физическая карта должна присутствовать в списке.
+6. Название не должно быть заменено другой картой.
+7. Весь видимый пользователю ответ должен быть только на русском языке.
 
-ФОРМАТ ОТВЕТА СТРОГО:
+ФОРМАТ ОТВЕТА:
 
 КАРТЫ НА ФОТО:
-1. [точное название или «Не определена»] — [прямая/перевёрнутая/положение неизвестно] — [очень коротко: значение именно для вопроса]
+1. [точное название с карты или «Не определена»] — [номер, если виден] — [прямая/перевёрнутая/положение неизвестно] — [короткое значение именно для вопроса]
 2. ...
-И так далее до ПОСЛЕДНЕЙ физически видимой карты.
+
+Продолжай до ПОСЛЕДНЕЙ физически видимой карты. Никаких дополнительных карт.
 
 ОБЩИЙ АНАЛИЗ:
-Свяжи ВСЕ перечисленные карты между собой и ответь на вопрос пользователя. Не игнорируй ни одну карту.
+Свяжи ВСЕ карты из списка между собой и ответь на вопрос. Не игнорируй ни одну перечисленную карту.
 
 ИТОГ:
-Короткий и максимально понятный ответ именно на вопрос пользователя.
+Короткий, конкретный ответ именно на вопрос пользователя.
 
 СОВЕТ:
-Короткий практический совет по символическому смыслу расклада.
+Короткий практический совет по символическому смыслу всего расклада.
 
-Запрещено: английский язык, английские названия карт, JSON, код, Markdown-блоки кода, внутренние рассуждения, самокоррекции, повторные пересчёты, выдуманные карты, выдуманные номера, фразы «unknown», «confidence», «card», «spread».`;
+ЗАПРЕЩЕНО В ФИНАЛЬНОМ ОТВЕТЕ:
+английский язык, английские названия карт, JSON, код, внутренние рассуждения, самокоррекции, повторные пересчёты, придуманные карты, придуманные номера, слова «unknown», «confidence», «card», «spread», а также описание того, как ты рассуждал.
+
+Не добавляй вступление перед разделом «КАРТЫ НА ФОТО».`;
 
   const response = await runVision(env, image, prompt);
   const raw = extractModelText(response);
+
   if (!raw) {
     console.error("[TAROT BOT] Empty model content", JSON.stringify(response));
     throw new Error("Workers AI returned empty final content");
   }
+
   return normalizeTarotAnswer(raw);
 }
 
 function extractModelText(response: any): string {
-  if (typeof response === "string") return response.trim();
+  if (typeof response === "string" && response.trim()) return response.trim();
   if (typeof response?.response === "string" && response.response.trim()) return response.response.trim();
+
   const message = response?.choices?.[0]?.message;
   if (typeof message?.content === "string" && message.content.trim()) return message.content.trim();
+
   if (Array.isArray(message?.content)) {
-    return message.content.map((part: any) => typeof part === "string" ? part : part?.text || "").join("").trim();
+    const text = message.content
+      .map((part: any) => typeof part === "string" ? part : part?.text || "")
+      .join("")
+      .trim();
+    if (text) return text;
   }
+
   return "";
 }
 
 function normalizeTarotAnswer(raw: string) {
-  const clean = raw.replace(/```(?:text|markdown|json)?/gi, "").replace(/```/g, "").trim();
-  if (/^НЕ_ТАРО\s*$/i.test(clean)) return { notTarot: true, text: "" };
+  const clean = raw
+    .replace(/^```(?:text|markdown)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  if (/^НЕ_ТАРО\s*$/i.test(clean)) {
+    return { notTarot: true, text: "" };
+  }
+
   return { notTarot: false, text: clean };
 }
 
 function formatTarotResult(result: { notTarot: boolean; text: string }, question: string) {
-  if (result.notTarot) return "🔮 На фото не удалось обнаружить расклад Таро. Я анализирую только фотографии с картами Таро.";
+  if (result.notTarot) {
+    return "🔮 На фото не удалось обнаружить расклад Таро. Я анализирую только фотографии с картами Таро.";
+  }
+
   let text = result.text.trim();
-  if (!/КАРТЫ\s+НА\s+ФОТО\s*:/i.test(text)) throw new Error("Model response has no card list");
-  text = text.replace(/^КАРТЫ\s+НА\s+ФОТО\s*:/i, "КАРТЫ НА ФОТО:");
+
+  const cardsMatch = text.match(/КАРТЫ\s+НА\s+ФОТО\s*:/i);
+  if (!cardsMatch) {
+    throw new Error("Model response has no card list");
+  }
+
+  text = text.replace(/^.*?КАРТЫ\s+НА\s+ФОТО\s*:/is, "КАРТЫ НА ФОТО:");
   text = text.replace(/^ОБЩИЙ\s+АНАЛИЗ\s*:/im, "ОБЩИЙ АНАЛИЗ:");
   text = text.replace(/^ИТОГ\s*:/im, "ИТОГ:");
   text = text.replace(/^СОВЕТ\s*:/im, "СОВЕТ:");
-  return `🔮 РАЗБОР РАСКЛАДА\n\nВопрос: ${question}\n\n${text}`;
+
+  // Защита от старого ответа модели: пользователь никогда не должен видеть
+  // внутренние рассуждения или служебные английские поля.
+  text = text.replace(/^(?:reasoning|reasoning_content|analysis)\s*:[\s\S]*?(?=КАРТЫ\s+НА\s+ФОТО\s*:)/i, "");
+  text = text.replace(/\b(?:unknown|confidence|spread|card)\b/gi, "");
+
+  return `🔮 РАЗБОР РАСКЛАДА\n\nВопрос: ${question}\n\n${text}`.trim();
 }
 
 async function sendChatAction(token: string, chatId: number, action: "typing") {
@@ -215,29 +283,52 @@ async function sendChatAction(token: string, chatId: number, action: "typing") {
 }
 
 async function sendMessage(token: string, chatId: number, text: string): Promise<{ message_id?: number } | null> {
+  const safeText = text.slice(0, MAX_TELEGRAM_TEXT);
   const response = await fetch(`${TELEGRAM_API(token)}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text, disable_web_page_preview: true }),
+    body: JSON.stringify({ chat_id: chatId, text: safeText, disable_web_page_preview: true }),
   });
+
   if (!response.ok) {
     console.error("[TAROT BOT] Telegram sendMessage failed", await response.text());
     return null;
   }
+
   const json = await response.json<any>();
   return json?.ok ? json.result : null;
+}
+
+async function sendLongMessage(token: string, chatId: number, text: string) {
+  let remaining = text.trim();
+
+  while (remaining.length > MAX_TELEGRAM_TEXT) {
+    let cut = remaining.lastIndexOf("\n", MAX_TELEGRAM_TEXT);
+    if (cut < 1000) cut = MAX_TELEGRAM_TEXT;
+
+    await sendMessage(token, chatId, remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+
+  if (remaining) await sendMessage(token, chatId, remaining);
 }
 
 async function editMessageText(token: string, chatId: number, messageId: number, text: string): Promise<boolean> {
   const response = await fetch(`${TELEGRAM_API(token)}/editMessageText`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, message_id: messageId, text, disable_web_page_preview: true }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      message_id: messageId,
+      text: text.slice(0, MAX_TELEGRAM_TEXT),
+      disable_web_page_preview: true,
+    }),
   });
+
   if (!response.ok) {
     console.error("[TAROT BOT] Telegram editMessageText failed", await response.text());
     return false;
   }
-  const json = await response.json<any>();
-  return Boolean(json?.ok);
+
+  return true;
 }
