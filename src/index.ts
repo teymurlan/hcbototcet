@@ -8,7 +8,7 @@ const TELEGRAM_FILE_API = (token: string) => `https://api.telegram.org/file/bot$
 const VISION_MODEL = "@cf/google/gemma-4-26b-a4b-it";
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
-const SYSTEM_PROMPT = `Ты — аккуратный консультант по символической интерпретации Таро. Никогда не придумывай карты. Если карта неразборчива, укажи card_name=null и confidence=low. Не утверждай, что знаешь будущее наверняка и не давай гарантированных предсказаний. Сначала распознай только реально видимые карты, их порядок и положение. Затем интерпретируй весь расклад в контексте вопроса. Если схема расклада неизвестна, честно укажи это. Ответ на русском языке.`;
+const SYSTEM_PROMPT = `Ты — аккуратный консультант по символической интерпретации Таро. Не придумывай карты и не выдавай догадки за факт. Сначала распознай только реально видимые карты, их порядок и положение. Если название карты нельзя уверенно прочитать или определить по изображению, используй card_name=null и confidence=low. Не добавляй карты, которых нет на фото. Затем кратко интерпретируй весь расклад строго в контексте вопроса пользователя. Если схема расклада неизвестна, так и укажи. Ответ должен быть на русском языке. Это символическая интерпретация, а не гарантированное предсказание.`;
 
 interface TelegramUpdate { update_id:number; message?:{ message_id:number; chat:{id:number}; photo?:Array<{file_id:string;width:number;height:number;file_size?:number}>; caption?:string; text?:string } }
 
@@ -28,17 +28,17 @@ export default { async fetch(request:Request, env:Env):Promise<Response> {
 
 async function handleUpdate(update:TelegramUpdate,env:Env){
   const m=update.message;if(!m)return;const t=env.TELEGRAM_BOT_TOKEN,c=m.chat.id;
-  if(m.text==="/start"){await sendMessage(t,c,"🔮 Добро пожаловать.\n\nОтправьте фото расклада Таро и вопрос в подписи. Я сначала определю видимые карты, их положение и порядок, затем дам разбор по вопросу. Если карта не читается уверенно, я не буду её придумывать.");return}
+  if(m.text==="/start"){await sendMessage(t,c,"🔮 Добро пожаловать.\n\nОтправьте фото расклада Таро и вопрос в подписи. Я определю только видимые карты и дам символический разбор по вашему вопросу.");return}
   if(!m.photo?.length){await sendMessage(t,c,"Пришлите фотографию расклада Таро и вопрос в подписи.");return}
   const q=(m.caption||"").trim();if(!q){await sendMessage(t,c,"Фото получил. Добавьте вопрос в подписи к фотографии и отправьте ещё раз.");return}
-  await sendMessage(t,c,"Фото получил. Анализирую карты и ваш вопрос. Если карта не читается уверенно, я отмечу это, а не буду угадывать.");
+  await sendMessage(t,c,"Фото получил. Распознаю карты и готовлю разбор...");
   const p=m.photo[m.photo.length-1];const file=await downloadTelegramImage(t,p.file_id);const result=await analyzeTarot(env,file.buffer,file.mime,q);await sendMessage(t,c,formatTarotResult(result,q));
 }
 
 async function downloadTelegramImage(t:string,id:string):Promise<{buffer:ArrayBuffer;mime:string}>{
   const r=await fetch(`${TELEGRAM_API(t)}/getFile?file_id=${encodeURIComponent(id)}`);if(!r.ok)throw new Error(`Telegram getFile HTTP ${r.status}`);
   const j=await r.json<any>();if(!j.ok||!j.result?.file_path)throw new Error(`Telegram getFile failed: ${JSON.stringify(j)}`);
-  const url=`${TELEGRAM_FILE_API(t)}/${j.result.file_path}`;const image=await fetch(url);if(!image.ok)throw new Error(`Telegram image download HTTP ${image.status}`);
+  const image=await fetch(`${TELEGRAM_FILE_API(t)}/${j.result.file_path}`);if(!image.ok)throw new Error(`Telegram image download HTTP ${image.status}`);
   const n=Number(image.headers.get("content-length")||0);if(n>MAX_IMAGE_BYTES)throw new Error(`Image too large: ${n} bytes`);
   const buffer=await image.arrayBuffer();if(buffer.byteLength>MAX_IMAGE_BYTES)throw new Error(`Image too large: ${buffer.byteLength} bytes`);if(!buffer.byteLength)throw new Error("Downloaded image is empty");
   const h=image.headers.get("content-type")?.split(";")[0].trim().toLowerCase();return{buffer,mime:h?.startsWith("image/")?h:"image/jpeg"};
@@ -48,17 +48,46 @@ function toDataUrl(buffer:ArrayBuffer,mime:string):string{const bytes=new Uint8A
 
 async function analyzeTarot(env:Env,buffer:ArrayBuffer,mime:string,q:string){
   const image=toDataUrl(buffer,mime);
-  const prompt=`Вопрос пользователя:\n${q}\n\nПроанализируй приложенную фотографию расклада Таро. Сначала определи только реально видимые карты и их фактический порядок. Для каждой карты укажи название, положение и confidence. Если карта неразборчива — card_name=null. Затем дай общий символический анализ всех карт именно в контексте вопроса. Не выдумывай схему расклада. Не выдавай трактовку как гарантированное предсказание. Верни только валидный JSON: {"readable":true,"deck":"...","cards":[{"position":1,"card_name":"...","orientation":"upright|reversed|unknown","confidence":"high|medium|low"}],"spread_type":"...","analysis":"...","conclusion":"...","advice":"..."}`;
+  const prompt=`Вопрос: ${q}\n\nНа фото расклад Таро. Сначала посчитай только фактически видимые карты. Для каждой реально видимой карты укажи position, card_name, orientation и confidence. Не угадывай нечитаемые карты и не добавляй отсутствующие. Затем дай короткий общий анализ по вопросу. Если схема неизвестна, напиши это. Верни ТОЛЬКО валидный JSON без markdown и без дополнительных пояснений: {"readable":true,"deck":"...","cards":[{"position":1,"card_name":"...","orientation":"upright|reversed|unknown","confidence":"high|medium|low"}],"spread_type":"...","analysis":"...","conclusion":"...","advice":"..."}`;
   console.log("[TAROT BOT] Sending downloaded image to Workers AI",{bytes:buffer.byteLength,mime,model:VISION_MODEL});
   const response=await env.AI.run(VISION_MODEL,{messages:[
     {role:"system",content:SYSTEM_PROMPT},
     {role:"user",content:[{type:"text",text:prompt},{type:"image_url",image_url:{url:image}}]}
-  ],temperature:0.15,max_tokens:2200} as any);
+  ],temperature:0.1,max_tokens:1200} as any);
   console.log("[TAROT BOT] Workers AI response received");
-  const raw=typeof response==="string"?response:(response as any)?.response;if(!raw)throw new Error(`Workers AI returned empty response: ${JSON.stringify(response)}`);return normalize(parseJson(raw));
+  const msg=(response as any)?.choices?.[0]?.message;
+  const raw=typeof response==="string"?response:(typeof msg?.content==="string"?msg.content.trim():"");
+  if(!raw){
+    const reasoning=typeof msg?.reasoning_content==="string"?msg.reasoning_content.trim():"";
+    console.error("[TAROT BOT] Empty content; model finish reason:",(response as any)?.choices?.[0]?.finish_reason);
+    if(reasoning){
+      throw new Error("Workers AI completed reasoning but returned no final answer. Retrying with a shorter prompt is required.");
+    }
+    throw new Error(`Workers AI returned empty response: ${JSON.stringify(response)}`);
+  }
+  return normalize(parseJson(raw));
 }
 
-function parseJson(raw:string){try{return JSON.parse(raw)}catch{const s=raw.indexOf("{"),e=raw.lastIndexOf("}");if(s>=0&&e>s)return JSON.parse(raw.slice(s,e+1));throw new Error(`Workers AI returned non-JSON response: ${raw.slice(0,500)}`)}}
-function normalize(v:any){const cards=Array.isArray(v?.cards)?v.cards.map((x:any,i:number)=>({position:Number(x?.position)||i+1,card_name:typeof x?.card_name==="string"&&x.card_name.trim()?x.card_name.trim():null,orientation:["upright","reversed","unknown"].includes(x?.orientation)?x.orientation:"unknown",confidence:["high","medium","low"].includes(x?.confidence)?x.confidence:"low"})):[];return{readable:Boolean(v?.readable??cards.some((x:any)=>x.card_name)),deck:typeof v?.deck==="string"?v.deck:"Не определена",cards,spread_type:typeof v?.spread_type==="string"?v.spread_type:"Схема не определена",analysis:typeof v?.analysis==="string"?v.analysis:"Не удалось сформировать анализ.",conclusion:typeof v?.conclusion==="string"?v.conclusion:"Не удалось сформировать итог.",advice:typeof v?.advice==="string"?v.advice:"Не удалось сформировать совет."}}
-function formatTarotResult(r:any,q:string){if(!r.cards?.some((c:any)=>c.card_name))return"Я не смог уверенно распознать карты на фотографии. Не хочу угадывать.\n\nПришлите фото крупнее, чтобы все карты были хорошо видны.";const lines=r.cards.map((c:any,i:number)=>`${Number(c.position)||i+1}. ${c.card_name||"Карта не определена"}${c.orientation==="reversed"?" — перевёрнутая":c.orientation==="upright"?" — прямая":" — положение не определено"} (${c.confidence})`).join("\n");return`🔮 РАЗБОР РАСКЛАДА\n\nВопрос: ${q}\n\nКарты:\n${lines}\n\nСхема: ${r.spread_type}\n\nОБЩИЙ АНАЛИЗ\n${r.analysis}\n\nИТОГ\n${r.conclusion}\n\nСОВЕТ\n${r.advice}\n\nЭто символическая интерпретация Таро, а не гарантированное предсказание будущего.`}
+function parseJson(raw:string){
+  try{return JSON.parse(raw)}catch{
+    const cleaned=raw.replace(/```json/gi,"").replace(/```/g,"").trim();
+    try{return JSON.parse(cleaned)}catch{
+      const s=cleaned.indexOf("{"),e=cleaned.lastIndexOf("}");
+      if(s>=0&&e>s)return JSON.parse(cleaned.slice(s,e+1));
+      throw new Error(`Workers AI returned non-JSON response: ${cleaned.slice(0,500)}`);
+    }
+  }
+}
+
+function normalize(v:any){
+  const cards=Array.isArray(v?.cards)?v.cards.map((x:any,i:number)=>({position:Number(x?.position)||i+1,card_name:typeof x?.card_name==="string"&&x.card_name.trim()?x.card_name.trim():null,orientation:["upright","reversed","unknown"].includes(x?.orientation)?x.orientation:"unknown",confidence:["high","medium","low"].includes(x?.confidence)?x.confidence:"low"})):[];
+  return{readable:Boolean(v?.readable??cards.some((x:any)=>x.card_name)),deck:typeof v?.deck==="string"?v.deck:"Не определена",cards,spread_type:typeof v?.spread_type==="string"?v.spread_type:"Схема не определена",analysis:typeof v?.analysis==="string"?v.analysis:"Не удалось сформировать анализ.",conclusion:typeof v?.conclusion==="string"?v.conclusion:"Не удалось сформировать итог.",advice:typeof v?.advice==="string"?v.advice:"Не удалось сформировать совет."};
+}
+
+function formatTarotResult(r:any,q:string){
+  if(!r.cards?.some((c:any)=>c.card_name))return"Я не смог уверенно распознать карты на фотографии. Не хочу угадывать.\n\nПришлите фото крупнее, чтобы все карты были хорошо видны.";
+  const lines=r.cards.map((c:any,i:number)=>`${Number(c.position)||i+1}. ${c.card_name||"Карта не определена"}${c.orientation==="reversed"?" — перевёрнутая":c.orientation==="upright"?" — прямая":" — положение не определено"}`).join("\n");
+  return`🔮 РАЗБОР РАСКЛАДА\n\nВопрос: ${q}\n\nКарты:\n${lines}\n\nСхема: ${r.spread_type}\n\nОБЩИЙ АНАЛИЗ\n${r.analysis}\n\nИТОГ\n${r.conclusion}\n\nСОВЕТ\n${r.advice}\n\nЭто символическая интерпретация Таро, а не гарантированное предсказание будущего.`;
+}
+
 async function sendMessage(t:string,c:number,text:string){const r=await fetch(`${TELEGRAM_API(t)}/sendMessage`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({chat_id:c,text,disable_web_page_preview:true})});if(!r.ok)console.error("[TAROT BOT] Telegram sendMessage failed",await r.text())}
