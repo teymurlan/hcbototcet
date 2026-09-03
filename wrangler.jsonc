@@ -1,24 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "tarot-photo-bot",
+  "name": "hcbototcet",
   "main": "src/index.ts",
-  "compatibility_date": "2026-08-26",
-  "ai": {
-    "binding": "AI"
-  },
-  "observability": {
-    "enabled": true,
-    "head_sampling_rate": 1,
-    "logs": {
-      "enabled": true,
-      "head_sampling_rate": 1,
-      "persist": true,
-      "invocation_logs": true
-    },
-    "traces": {
-      "enabled": false,
-      "persist": true,
-      "head_sampling_rate": 1
-    }
-  }
+  "compatibility_date": "2026-09-04",
+  "observability": { "enabled": true }
 }
