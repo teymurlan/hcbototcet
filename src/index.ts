@@ -1,7 +1,7 @@
-import photo from './photo';
-import type { Env } from './photo';
+import photo from './photo-v4';
+import type { Env } from './photo-v4';
 
-export type { Env } from './photo';
+export type { Env } from './photo-v4';
 
 export default {
   fetch(req: Request, env: Env): Promise<Response> {
