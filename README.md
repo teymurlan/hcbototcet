@@ -65,6 +65,10 @@ https://<WORKER_URL>/health
 
 После этого откройте бота в Telegram и отправьте `/start`.
 
+## Production
+
+Основной Worker проекта должен деплоиться из ветки `main`. Production URL: `https://hcbototcet.teymurlannn.workers.dev/`.
+
 ## Безопасность
 
 Токен Telegram никогда не передаётся в браузер. Mini App отправляет только подписанный Telegram `initData`; Worker проверяет HMAC подпись перед принятием фотоотчёта.
