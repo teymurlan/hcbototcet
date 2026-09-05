@@ -1,49 +1,70 @@
-# Tarot Photo Bot
+# House Cleaning · Telegram Photo Reports
 
-Telegram-бот для анализа фотографии расклада Таро по вопросу пользователя.
+Рабочий Telegram Mini App для фотоотчётов сотрудников House Cleaning.
 
-## Логика MVP
+## Что умеет
 
-1. Пользователь отправляет фото расклада.
-2. В подписи к фото пишет вопрос.
-3. Cloudflare Worker получает изображение через Telegram Bot API.
-4. Workers AI анализирует фото и вопрос.
-5. Бот показывает распознанные карты, положение, общий анализ, итог и совет.
-6. При низкой уверенности бот не должен выдавать догадку за факт.
+- открывается внутри Telegram как WebApp / Mini App;
+- сотрудник указывает объект, адрес, тип уборки и бригаду;
+- обязательные отдельные фотографии **ДО** и **ПОСЛЕ**;
+- предпросмотр и удаление выбранных фотографий до отправки;
+- до 20 изображений в одном отчёте, до 9 МБ каждое;
+- проверяет подлинность `Telegram.WebApp.initData` на сервере;
+- отправляет администратору карточку отчёта и отдельные альбомы ДО/ПОСЛЕ;
+- генерирует уникальный ID отчёта;
+- `/health` показывает состояние конфигурации без раскрытия секретов;
+- `/setup` настраивает webhook, команды и кнопку WebApp.
 
 ## Стек
 
 - Cloudflare Workers
-- Cloudflare Workers AI
-- Telegram Bot API
 - TypeScript
-- Только нативный `fetch` в runtime
+- Telegram Bot API
+- Telegram Mini Apps API
+- без внешних runtime-зависимостей
 
-## Secrets
+## Cloudflare secrets / variables
 
-Telegram token не хранится в GitHub.
+Обязательные:
 
-Создать secret:
+- `TELEGRAM_BOT_TOKEN` — токен от BotFather. Хранить только как secret.
+- `ADMIN_IDS` — Telegram ID администраторов через запятую.
+- `SETUP_SECRET` — случайный секрет для одноразового `/setup`.
+
+Рекомендуемые:
+
+- `WEBAPP_URL` — публичный HTTPS URL Worker, например `https://hcbototcet.<account>.workers.dev/`.
+- `TELEGRAM_WEBHOOK_SECRET` — дополнительная проверка запросов webhook от Telegram.
+- `ALLOWED_USER_IDS` — если задан, только перечисленные Telegram ID смогут отправлять отчёты.
+
+Никогда не добавляйте реальные секреты в GitHub.
+
+## Команды
 
 ```bash
-npx wrangler secret put TELEGRAM_BOT_TOKEN
+npm install
+npm run dev
+npm run deploy
 ```
 
 ## Первый запуск
 
-Cloudflare требует принять лицензию Meta перед первым использованием Llama 3.2 11B Vision Instruct. Это делается один раз для аккаунта через Workers AI.
-
-После настройки secret и AI binding:
-
-```bash
-npm install
-npm run deploy
-```
-
-После деплоя установить Telegram webhook на URL Worker:
+После деплоя откройте в браузере:
 
 ```text
-https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://<YOUR_WORKER>.workers.dev
+https://<WORKER_URL>/setup?key=<SETUP_SECRET>
 ```
 
-Токен не помещать в GitHub, README или код.
+В ответе должны быть `ok: true`, успешный `setWebhook`, `setChatMenuButton` и `setMyCommands`.
+
+Проверка Worker:
+
+```text
+https://<WORKER_URL>/health
+```
+
+После этого откройте бота в Telegram и отправьте `/start`.
+
+## Безопасность
+
+Токен Telegram никогда не передаётся в браузер. Mini App отправляет только подписанный Telegram `initData`; Worker проверяет HMAC подпись перед принятием фотоотчёта.
