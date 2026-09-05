@@ -201,14 +201,27 @@ async function createReport(req: Request, env: Env): Promise<Response> {
 async function sendAlbums(token: string, chatId: string, files: File[], label: string) {
   for (let offset = 0; offset < files.length; offset += 10) {
     const part = files.slice(offset, offset + 10);
+    const caption = offset ? `${label} · продолжение` : label;
+
+    if (part.length === 1) {
+      const body = new FormData();
+      body.append('chat_id', chatId);
+      body.append('photo', part[0], part[0].name || 'photo.jpg');
+      body.append('caption', caption);
+      const response = await fetch(`${API(token)}/sendPhoto`, { method: 'POST', body });
+      if (!response.ok) throw new Error(await response.text());
+      const data = (await response.json()) as any;
+      if (!data?.ok) throw new Error(JSON.stringify(data));
+      continue;
+    }
+
     const body = new FormData();
     const media: Array<Record<string, string>> = [];
-
     part.forEach((file, index) => {
       const field = `f${offset + index}`;
       body.append(field, file, file.name || `${field}.jpg`);
       const item: Record<string, string> = { type: 'photo', media: `attach://${field}` };
-      if (index === 0) item.caption = offset ? `${label} · продолжение` : label;
+      if (index === 0) item.caption = caption;
       media.push(item);
     });
 
