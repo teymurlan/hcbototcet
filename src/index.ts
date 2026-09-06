@@ -1,8 +1,8 @@
-import photo from './photo-v19-hourglass';
-import type { Env } from './photo-v19-hourglass';
+import photo from './photo-v19-admin-gallery';
+import type { Env } from './photo-v19-admin-gallery';
 
-export { AppState } from './photo-v19-hourglass';
-export type { Env } from './photo-v19-hourglass';
+export { AppState } from './photo-v19-admin-gallery';
+export type { Env } from './photo-v19-admin-gallery';
 
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
