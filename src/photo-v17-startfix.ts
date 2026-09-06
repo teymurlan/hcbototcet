@@ -22,7 +22,7 @@ export default{
       await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);
     }catch(e){
       console.error('start hotfix',e);
-      await tgTimeout(env.TELEGRAM_BOT_TOKEN,'sendMessage',{chat_id:m.chat.id,text:'Не удалось обновить меню. Отправьте /start ещё раз.'},5000).catch(()=>null);
+      await tgTimeout(env.TELEGRAM_BOT_TOKEN,'sendMessage',{chat_id:m.chat.id,text:'Не удалось открыть главное меню. Сообщение /start оставлено — попробуйте ещё раз через несколько секунд.'},5000).catch(()=>null);
     }
     return new Response('OK');
   }
@@ -32,7 +32,7 @@ async function safeHome(env:Env,chat:string|number,user:TgUser,origin:string){
   const access=await accessFor(env,user.id);
   if(!access.allowed){
     const text=`🔒 <b>Доступ закрыт</b>\n\nВаш Telegram ID: <code>${user.id}</code>\nПередайте его администратору House Cleaning.`;
-    await sendMenu(env,chat,user.id,text,{parse_mode:'HTML'});
+    await sendFreshMenu(env,chat,user.id,text,{parse_mode:'HTML'});
     return;
   }
   const job=(await stateCall(env,'/job?id='+user.id)).job||null;
@@ -42,22 +42,12 @@ async function safeHome(env:Env,chat:string|number,user:TgUser,origin:string){
   const keyboard:any=[[{text:label,web_app:{url:appUrl},style:'success'}],[{text:'📋 Правила и регламент',callback_data:'v17:rules',style:'primary'}]];
   if(access.admin)keyboard.push([{text:'👥 Сотрудники и админ-панель',callback_data:'v17:staff',style:'danger'}]);
   const text=`🏠 <b>HOUSE CLEANING · РАБОЧИЙ БОТ</b>\n\n👤 <b>${esc(access.employee?.name||displayName(user))}</b>\n📌 ${esc(status)}\n\n<b>Порядок работы:</b>\n1️⃣ Клиент и адрес\n2️⃣ Фото/видео ДО + фиксация дефектов\n3️⃣ Уборка по регламенту\n4️⃣ Фото/видео ПОСЛЕ и завершение\n\nВсе незавершённые данные сохраняются — если закрыли приложение, просто откройте его снова.`;
-  await sendMenu(env,chat,user.id,text,{parse_mode:'HTML',reply_markup:{inline_keyboard:keyboard}});
-  const p=tgTimeout(env.TELEGRAM_BOT_TOKEN,'setChatMenuButton',{chat_id:chat,menu_button:{type:'web_app',text:'Фотоотчёты',web_app:{url:appUrl}}},6000).catch(()=>null);
-  if(ctxWaitable(env))void p;
+  await sendFreshMenu(env,chat,user.id,text,{parse_mode:'HTML',reply_markup:{inline_keyboard:keyboard}});
+  void tgTimeout(env.TELEGRAM_BOT_TOKEN,'setChatMenuButton',{chat_id:chat,menu_button:{type:'web_app',text:'Фотоотчёты',web_app:{url:appUrl}}},6000).catch(()=>null);
 }
 
-function ctxWaitable(_env:Env){return true}
-
-async function sendMenu(env:Env,chat:string|number,userId:number,text:string,extra:any){
+async function sendFreshMenu(env:Env,chat:string|number,userId:number,text:string,extra:any){
   const old=Number((await getUi(env,userId))?.messageId||0);
-  if(old){
-    try{
-      await tgWithStyleFallback(env.TELEGRAM_BOT_TOKEN,'editMessageText',{chat_id:chat,message_id:old,text,...extra},6500);
-      await setUi(env,userId,old);
-      return;
-    }catch{}
-  }
   const x=await tgWithStyleFallback(env.TELEGRAM_BOT_TOKEN,'sendMessage',{chat_id:chat,text,...extra},6500);
   const id=Number(x?.result?.message_id||0);
   if(!id)throw new Error('Telegram did not return menu message id');
