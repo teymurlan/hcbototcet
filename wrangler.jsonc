@@ -3,5 +3,13 @@
   "name": "hcbototcet",
   "main": "src/index.ts",
   "compatibility_date": "2026-09-04",
-  "observability": { "enabled": true }
+  "observability": { "enabled": true },
+  "durable_objects": {
+    "bindings": [
+      { "name": "STATE", "class_name": "AppState" }
+    ]
+  },
+  "migrations": [
+    { "tag": "v5", "new_sqlite_classes": ["AppState"] }
+  ]
 }
