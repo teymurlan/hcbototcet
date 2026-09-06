@@ -19,7 +19,7 @@ export default{
     if(!(['/start','/menu','/webapp'].includes(cmd)||text==='🏠 Главное меню'))return photoV17.fetch(copy,env,ctx);
     try{
       await safeHome(env,m.chat.id,user,u.origin);
-      await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);
+      if(cmd!=='/start')await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);
     }catch(e){
       console.error('start hotfix',e);
       await tgTimeout(env.TELEGRAM_BOT_TOKEN,'sendMessage',{chat_id:m.chat.id,text:'Не удалось открыть главное меню. Сообщение /start оставлено — попробуйте ещё раз через несколько секунд.'},5000).catch(()=>null);
