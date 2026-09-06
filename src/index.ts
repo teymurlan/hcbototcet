@@ -1,8 +1,8 @@
-import photo from './photo-v17-keyboard';
-import type { Env } from './photo-v17-keyboard';
+import photo from './photo-v18-fast';
+import type { Env } from './photo-v18-fast';
 
-export { AppState } from './photo-v17-keyboard';
-export type { Env } from './photo-v17-keyboard';
+export { AppState } from './photo-v18-fast';
+export type { Env } from './photo-v18-fast';
 
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
