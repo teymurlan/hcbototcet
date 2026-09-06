@@ -1,8 +1,8 @@
-import photo from './photo-v16';
-import type { Env } from './photo-v16';
+import photo from './photo-v17';
+import type { Env } from './photo-v17';
 
-export { AppState } from './photo-v16';
-export type { Env } from './photo-v16';
+export { AppState } from './photo-v17';
+export type { Env } from './photo-v17';
 
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
