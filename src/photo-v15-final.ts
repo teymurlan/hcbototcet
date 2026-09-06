@@ -1,4 +1,4 @@
-import { APP } from './app-v15-final';
+import { APP } from './app-v13';
 import photoV15 from './photo-v15';
 import type { Env } from './photo-v15';
 export { AppState } from './photo-v15';
