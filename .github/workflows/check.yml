@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-      - run: npx tsc --noEmit
+      - run: npx -p typescript tsc --noEmit
