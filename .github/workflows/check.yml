@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 jobs:
-  typecheck:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,4 +15,4 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-      - run: npx -p typescript tsc --noEmit
+      - run: npx wrangler deploy --dry-run --outdir /tmp/hc-worker-build
