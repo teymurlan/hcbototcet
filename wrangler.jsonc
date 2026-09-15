@@ -4,6 +4,7 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-09-04",
   "observability": { "enabled": true },
+  "triggers": { "crons": ["*/15 * * * *"] },
   "durable_objects": {
     "bindings": [
       { "name": "STATE", "class_name": "AppState" },
