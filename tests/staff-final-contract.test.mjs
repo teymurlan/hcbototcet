@@ -14,12 +14,14 @@ const safeServer = fs.readFileSync('src/staff-operations-safe.ts', 'utf8');
 const accessServer = fs.readFileSync('src/staff-admin-access.ts', 'utf8');
 const defectsServer = fs.readFileSync('src/staff-defects-performance.ts', 'utf8');
 const styleServer = fs.readFileSync('src/staff-mira-style.ts', 'utf8');
+const humanServer = fs.readFileSync('src/staff-human-orders.ts', 'utf8');
 const index = fs.readFileSync('src/index.ts', 'utf8');
 const wrangler = fs.readFileSync('wrangler.jsonc', 'utf8');
 const baseUi = fs.readFileSync('src/staff-v3-ui.ts', 'utf8');
 
-test('stable STAFF visual entrypoint preserves all underlying logic layers', () => {
-  assert.match(index, /from '\.\/staff-mira-style'/);
+test('stable STAFF entrypoint preserves human display and all underlying logic layers', () => {
+  assert.match(index, /from '\.\/staff-human-orders'/);
+  assert.match(humanServer, /from '\.\/staff-mira-style'/);
   assert.match(styleServer, /from '\.\/staff-defects-performance'/);
   assert.match(defectsServer, /from '\.\/staff-admin-access'/);
   assert.match(accessServer, /from '\.\/staff-operations-safe'/);
