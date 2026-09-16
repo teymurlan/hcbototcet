@@ -1,8 +1,8 @@
-import staff from './staff-v5';
-import type { Env } from './staff-v5';
+import staff from './staff-final';
+import type { Env } from './staff-final';
 
-export { AppState } from './staff-v5';
-export type { Env } from './staff-v5';
+export { AppState } from './staff-final';
+export type { Env } from './staff-final';
 
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
