@@ -7,10 +7,12 @@ const ui = fs.readFileSync('src/staff-current-ui.ts','utf8');
 const operations = fs.readFileSync('src/staff-operations.ts','utf8');
 const safe = fs.readFileSync('src/staff-operations-safe.ts','utf8');
 const access = fs.readFileSync('src/staff-admin-access.ts','utf8');
+const defects = fs.readFileSync('src/staff-defects-performance.ts','utf8');
 const index = fs.readFileSync('src/index.ts','utf8');
 
-test('current stable STAFF layer remains under the active admin-access runtime',()=>{
-  assert.match(index,/from '\.\/staff-admin-access'/);
+test('current stable STAFF layer remains under the active defect/performance runtime',()=>{
+  assert.match(index,/from '\.\/staff-defects-performance'/);
+  assert.match(defects,/from '\.\/staff-admin-access'/);
   assert.match(access,/from '\.\/staff-operations-safe'/);
   assert.match(safe,/from '\.\/staff-operations'/);
   assert.match(operations,/from '\.\/staff-current'/);
