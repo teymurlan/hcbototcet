@@ -79,9 +79,7 @@ test('standards have swipe carousel, progress, detail sheet, haptic and reduced 
 test('app-wide motion enhancer is active without changing the server layer chain',()=>{
   assert.match(server,/from '\.\/staff-motion-system'/);
   assert.ok(server.includes('applyStaffMotionSystem(STAFF_HUMAN_ORDER_APP)'));
-  assert.ok(server.includes('app_motion_system:true'));
-  assert.ok(server.includes('moving_nav_indicator:true'));
-  assert.ok(server.includes('native_toasts:true'));
+  for(const token of ['app_motion_system:true','moving_nav_indicator:true','native_toasts:true','screen_motion:true','sheet_motion:true','media_fade:true','reduced_motion:true']) assert.ok(server.includes(token),token);
 });
 
 test('app motion is event-driven and does not add observer or interval polling',()=>{
@@ -105,4 +103,17 @@ test('native-looking toast routes existing helpers without polling and keeps hap
 
 test('motion covers filters, status changes, back direction, media and accordions with reduced motion fallback',()=>{
   for(const token of ['hcFilterIn','hcStateIn','hcWarningIn','hcSuccessIn','hcScreenBack','hcAccordionIn','hc-direction-back','details[open]','hc-viewer-media','prefers-reduced-motion:reduce']) assert.ok(motion.includes(token),token);
+});
+
+test('screen rendering dispatches one event-driven motion pass and cards use short stagger only',()=>{
+  for(const token of ["function M(html)",'hc-motion-ready',"new CustomEvent('hc:after-render'",'hcScreenIn','hcCardIn','animation-delay:24ms','animation-delay:90ms']) assert.ok(motion.includes(token),token);
+  assert.ok(!motion.includes('animation-delay:1s'));
+});
+
+test('manual sheet closes with reverse transition without changing synchronous form logic',()=>{
+  for(const token of ['window.__hcCloseMotion','hc-motion-closing','hcModalIn','hcModalOut','hcSheetIn','hcSheetOut',"document.getElementById('rtClose').onclick"]) assert.ok(motion.includes(token),token);
+});
+
+test('gallery media fades after actual load and reduced motion always keeps media visible',()=>{
+  for(const token of ['hc-media-loaded',"document.addEventListener('load'", "document.addEventListener('loadeddata'",'opacity:.01','opacity:1!important']) assert.ok(motion.includes(token),token);
 });
