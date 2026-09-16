@@ -3,11 +3,10 @@ import type { Env } from './staff-final';
 import staffV5 from './staff-v5';
 import { STAFF_PRODUCTION_APP } from './staff-production-ui';
 
-export { FinalAppState };
 export type { Env } from './staff-final';
 
 const STORE_NAME = 'house-cleaning-app-v1';
-const BUILD = 'staff-production-2026-09-16-b';
+const BUILD = 'staff-production-2026-09-16-c';
 const WORKER_ORIGIN = 'https://hcbototcet.teymurlannn.workers.dev';
 
 type PaymentDetails = {
@@ -29,13 +28,9 @@ export class AppState extends FinalAppState {
       if (!id) return J({ ok: false, error: 'Некорректный сотрудник' }, 400);
       const old = await this.state.storage.get<PaymentDetails>(`opsfinal:payment:${id}`) || emptyPayment();
       const next: PaymentDetails = {
-        bank: clean(x.bank, 80),
-        sbp_phone: clean(x.sbp_phone, 40),
-        recipient: clean(x.recipient, 120),
-        card_last4: clean(x.card_last4, 4).replace(/\D/g, '').slice(0, 4),
-        updated_at: new Date().toISOString(),
-        updated_by: positiveInt(x.updated_by),
-        updated_role: x.updated_role === 'admin' ? 'admin' : 'employee',
+        bank: clean(x.bank, 80), sbp_phone: clean(x.sbp_phone, 40), recipient: clean(x.recipient, 120),
+        card_last4: clean(x.card_last4, 4).replace(/\D/g, '').slice(0, 4), updated_at: new Date().toISOString(),
+        updated_by: positiveInt(x.updated_by), updated_role: x.updated_role === 'admin' ? 'admin' : 'employee',
       };
       await this.state.storage.put(`opsfinal:payment:${id}`, next);
       const at = Date.now(), auditId = crypto.randomUUID();
@@ -48,13 +43,10 @@ export class AppState extends FinalAppState {
 
     if (u.pathname === '/opsprod/finance-entry' && req.method === 'POST') {
       const x: any = await readBody(req), employeeId = positiveInt(x.employee_id), kind = clean(x.kind, 20), amount = Number(x.amount);
-      if (!employeeId || !['payout', 'adjustment'].includes(kind) || !Number.isFinite(amount) || (kind === 'payout' && amount <= 0) || (kind === 'adjustment' && amount === 0)) {
-        return J({ ok: false, error: 'Проверьте сумму' }, 400);
-      }
+      if (!employeeId || !['payout', 'adjustment'].includes(kind) || !Number.isFinite(amount) || (kind === 'payout' && amount <= 0) || (kind === 'adjustment' && amount === 0)) return J({ ok: false, error: 'Проверьте сумму' }, 400);
       const at = Date.now(), id = crypto.randomUUID();
       const entry = {
-        id, employee_id: employeeId, kind, amount,
-        comment: clean(x.comment, 500), admin_id: positiveInt(x.admin_id),
+        id, employee_id: employeeId, kind, amount, comment: clean(x.comment, 500), admin_id: positiveInt(x.admin_id),
         payment_bank: clean(x.payment_bank, 80), payment_sbp_phone: clean(x.payment_sbp_phone, 40),
         payment_recipient: clean(x.payment_recipient, 120), payment_card_last4: clean(x.payment_card_last4, 4).replace(/\D/g, '').slice(0, 4),
         at, created_at: new Date(at).toISOString(),
@@ -70,19 +62,19 @@ export class AppState extends FinalAppState {
 export default {
   async fetch(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const u = new URL(req.url);
-    if (req.method === 'GET' && u.pathname === '/__hc_staff_version') {
-      return J({ ok: true, build: BUILD, staff: true, sync_v2: true, payment_audit: true, payout_bank: true, standards_colors: true });
-    }
+    if (req.method === 'GET' && u.pathname === '/__hc_staff_version') return J({ ok: true, build: BUILD, staff: true, sync_v2: true, payment_audit: true, payout_bank: true, standards_colors: true });
     if (req.method === 'GET' && ['/staff', '/staff/', '/admin'].includes(u.pathname)) return html(STAFF_PRODUCTION_APP);
 
     if (u.pathname === '/api/staff/payment-details' && req.method === 'POST') return paymentSaveApi(req, env, ctx);
     if (u.pathname === '/api/staff/finance/entry' && req.method === 'POST') return financeEntryApi(req, env, ctx);
+    if (u.pathname === '/api/staff/my-finance' && req.method === 'GET') return myFinanceApi(req, env, ctx);
+    if (u.pathname === '/api/staff/employee-finance' && req.method === 'GET') return employeeFinanceApi(req, env, ctx);
 
     return staffFinal.fetch(req, env, ctx as any);
   },
 
   async scheduled(controller: any, env: Env, ctx: ExecutionContext): Promise<void> {
-    // Important: call V5 scheduler directly so the old final sync cannot emit duplicate order-change notifications.
+    // Use the proven reminders from V5, but not the old final order-sync that caused duplicate "changed" messages.
     await staffV5.scheduled(controller, env, ctx);
     ctx.waitUntil(syncBookingEventsV2(env));
   },
@@ -96,18 +88,13 @@ async function paymentSaveApi(req: Request, env: Env, ctx?: ExecutionContext): P
   if (!auth.admin && requested && requested !== auth.userId) return J({ ok: false, error: 'Нет доступа' }, 403);
 
   const x: any = await readBody(req), currentData = await stateCall(env, `/opsfinal/payment?id=${id}`).catch(() => ({ payment: emptyPayment() }));
-  const old = normalizePayment(currentData.payment || emptyPayment());
-  const next = normalizePayment(x);
+  const old = normalizePayment(currentData.payment || emptyPayment()), next = normalizePayment(x);
   if (!next.bank && !next.sbp_phone && !next.recipient && !next.card_last4) return J({ ok: false, error: 'Заполните хотя бы банк или СБП' }, 400);
   if (samePayment(old, next)) return J({ ok: true, changed: false, payment: currentData.payment || old });
 
-  const saved = await stateCall(env, '/opsprod/payment-save', 'POST', {
-    ...next, id, updated_by: auth.userId, updated_role: auth.admin ? 'admin' : 'employee',
-  });
+  const saved = await stateCall(env, '/opsprod/payment-save', 'POST', { ...next, id, updated_by: auth.userId, updated_role: auth.admin ? 'admin' : 'employee' });
   if (!saved.ok) return J(saved, 400);
-
-  const er = await stateCall(env, `/ops3/employee?id=${id}`).catch(() => ({ employee: null }));
-  const name = er.employee?.name || `ID ${id}`;
+  const er = await stateCall(env, `/ops3/employee?id=${id}`).catch(() => ({ employee: null })), name = er.employee?.name || `ID ${id}`;
   const oldText = paymentText(old), newText = paymentText(next), origin = new URL(req.url).origin;
 
   if (auth.admin) {
@@ -124,9 +111,7 @@ async function paymentSaveApi(req: Request, env: Env, ctx?: ExecutionContext): P
 async function financeEntryApi(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
   const auth = await authState(req, env, ctx); if (!auth.ok || !auth.admin) return auth.response;
   const x: any = await readBody(req), employeeId = positiveInt(x.employee_id), kind = clean(x.kind, 20), amount = Number(x.amount);
-  if (!employeeId || !['payout', 'adjustment'].includes(kind) || !Number.isFinite(amount) || (kind === 'payout' && amount <= 0) || (kind === 'adjustment' && amount === 0)) {
-    return J({ ok: false, error: 'Проверьте сумму' }, 400);
-  }
+  if (!employeeId || !['payout', 'adjustment'].includes(kind) || !Number.isFinite(amount) || (kind === 'payout' && amount <= 0) || (kind === 'adjustment' && amount === 0)) return J({ ok: false, error: 'Проверьте сумму' }, 400);
 
   let payment = emptyPayment();
   if (kind === 'payout') {
@@ -141,7 +126,7 @@ async function financeEntryApi(req: Request, env: Env, ctx?: ExecutionContext): 
 
   const origin = new URL(req.url).origin;
   if (kind === 'payout') {
-    const method = payment.bank ? `${payment.bank}${payment.sbp_phone ? ` · СБП ${payment.sbp_phone}` : ''}` : 'способ выплаты не указан';
+    const method = payoutMethod(payment) || 'способ выплаты не указан';
     ctx?.waitUntil?.(sendTg(env, employeeId, `💸 <b>Выплата отмечена</b>\n\nСумма: <b>${money(amount)}</b>\nСпособ: <b>${esc(method)}</b>${x.comment ? `\nКомментарий: ${esc(x.comment)}` : ''}`, origin, 'Открыть финансы'));
   } else {
     ctx?.waitUntil?.(sendTg(env, employeeId, `🧾 <b>Корректировка баланса</b>\n\nСумма: <b>${money(amount)}</b>${x.comment ? `\nКомментарий: ${esc(x.comment)}` : ''}`, origin, 'Открыть финансы'));
@@ -149,17 +134,46 @@ async function financeEntryApi(req: Request, env: Env, ctx?: ExecutionContext): 
   return J({ ok: true, entry: saved.entry });
 }
 
-async function syncBookingEventsV2(env: Env): Promise<void> {
-  const orders = await bookingOrders(env);
-  const snapData = await stateCall(env, '/opsfinal/snapshot').catch(() => ({ snapshot: null }));
-  const snapshot = snapData.snapshot || null, now = Date.now();
-  const next: Record<string, any> = {};
-  for (const o of orders) {
-    const n = clean(o?.order_number, 120); if (!n) continue;
-    next[n] = snapshotOrderV2(o);
-  }
+async function myFinanceApi(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  const auth = await authState(req, env, ctx); if (!auth.ok || !auth.userId) return auth.response;
+  return J({ ok: true, ...(await financeForEmployee(env, auth.userId)) });
+}
+async function employeeFinanceApi(req: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  const auth = await authState(req, env, ctx); if (!auth.ok || !auth.admin) return auth.response;
+  const id = positiveInt(new URL(req.url).searchParams.get('id')); if (!id) return J({ ok: false, error: 'Сотрудник не найден' }, 400);
+  return J({ ok: true, ...(await financeForEmployee(env, id)) });
+}
 
-  // Migrate the old snapshot silently. This prevents a one-time storm of false "changed" events.
+async function financeForEmployee(env: Env, employeeId: number) {
+  const [orders, metasData, financeData] = await Promise.all([bookingOrders(env), stateCall(env, '/ops3/order-metas'), stateCall(env, '/ops3/finance')]);
+  const orderMap = new Map(orders.map((o: any) => [String(o.order_number), o]));
+  let accrued = 0, paid = 0, adjustments = 0; const history: any[] = [];
+  for (const m of metasData.metas || []) {
+    if (!m.verified_at) continue;
+    const a = (m.assigned || []).find((v: any) => Number(v.id) === employeeId); if (!a) continue;
+    const amount = Number(a.rate_value || 0); accrued += amount; const o: any = orderMap.get(String(m.order_number));
+    history.push({ type: 'accrual', amount, at: Number(m.verified_at || 0), order_number: m.order_number, label: `Заказ ${m.order_number}`, address: addressOf(o || {}) });
+  }
+  for (const f of financeData.entries || []) {
+    if (Number(f.employee_id) !== employeeId) continue;
+    const amount = Number(f.amount || 0); if (f.kind === 'payout') paid += amount; else adjustments += amount;
+    history.push({
+      type: f.kind, amount, at: Number(f.at || 0), label: f.kind === 'payout' ? 'Выплата' : 'Бонус / корректировка', comment: f.comment || '',
+      payment_bank: f.payment_bank || '', payment_sbp_phone: f.payment_sbp_phone || '', payment_recipient: f.payment_recipient || '', payment_card_last4: f.payment_card_last4 || '',
+    });
+  }
+  history.sort((a, b) => Number(b.at || 0) - Number(a.at || 0));
+  const lastPayout = history.find(x => x.type === 'payout') || null;
+  return { accrued, adjustments, earned: accrued + adjustments, paid, balance: accrued + adjustments - paid, last_payout: lastPayout, history: history.slice(0, 100) };
+}
+
+async function syncBookingEventsV2(env: Env): Promise<void> {
+  const orders = await bookingOrders(env), snapData = await stateCall(env, '/opsfinal/snapshot').catch(() => ({ snapshot: null })), snapshot = snapData.snapshot || null, now = Date.now();
+  const next: Record<string, any> = {};
+  for (const o of orders) { const n = clean(o?.order_number, 120); if (n) next[n] = snapshotOrderV2(o); }
+
+  // Old snapshots used mixed string/number values (for example apartment 315), which caused false changes every minute.
+  // Migrate silently once and only compare normalized V2 snapshots afterwards.
   if (!snapshot || Number(snapshot.version || 0) !== 2) {
     await stateCall(env, '/opsfinal/snapshot', 'POST', { version: 2, initialized: true, at: now, orders: next });
     return;
@@ -169,18 +183,12 @@ async function syncBookingEventsV2(env: Env): Promise<void> {
   for (const o of orders) {
     const n = clean(o?.order_number, 120); if (!n) continue;
     const current = next[n], old = prev[n];
-    if (!old) {
-      events.push({ type: 'new', order: o });
-      continue;
-    }
-    if (String(old.status || '') !== 'CANCELLED' && current.status === 'CANCELLED') {
-      events.push({ type: 'cancel', order: o });
-      continue;
-    }
-    if (semanticKey(old) !== semanticKey(current)) events.push({ type: 'change', order: o, old });
+    if (!old) { events.push({ type: 'new', order: o }); continue; }
+    if (String(old.status || '') !== 'CANCELLED' && current.status === 'CANCELLED') { events.push({ type: 'cancel', order: o }); continue; }
+    if (semanticKey(old) !== semanticKey(current)) events.push({ type: 'change', order: o });
   }
 
-  // Save first: even if Telegram is slow, the next cron run will not repeat the same event.
+  // Persist before Telegram calls: the same semantic state can never be emitted again by the next cron tick.
   await stateCall(env, '/opsfinal/snapshot', 'POST', { version: 2, initialized: true, at: now, orders: next });
   for (const e of events) {
     if (e.type === 'new') await emitNewOrder(env, e.order);
@@ -191,9 +199,9 @@ async function syncBookingEventsV2(env: Env): Promise<void> {
 
 function snapshotOrderV2(o: any) {
   return {
-    status: clean(o?.status, 30), date: clean(o?.date, 30), time: clean(o?.time, 30),
-    city: clean(o?.city, 120), address: clean(o?.address, 300), apartment: clean(o?.apartment, 80),
-    service_name: clean(o?.service_name, 160), area: Number(o?.area || 0), estimated_price: Number(o?.estimated_price || 0),
+    status: clean(o?.status, 30), date: clean(o?.date, 30), time: clean(o?.time, 30), city: clean(o?.city, 120),
+    address: clean(o?.address, 300), apartment: clean(o?.apartment, 80), service_name: clean(o?.service_name, 160),
+    area: Number(o?.area || 0), estimated_price: Number(o?.estimated_price || 0),
     addons: Array.isArray(o?.addon_names) ? o.addon_names.map((v: any) => clean(v, 120)).sort() : [],
   };
 }
@@ -226,8 +234,7 @@ async function authState(req: Request, env: Env, ctx?: ExecutionContext) {
   const u = new URL(req.url); u.pathname = '/api/state'; u.search = '';
   const r = await staffV5.fetch(new Request(u.toString(), { method: 'GET', headers: req.headers }), env, ctx as any);
   let data: any; try { data = await r.clone().json(); } catch { return { ok: false, admin: false, userId: 0, data: null, response: r }; }
-  const userId = positiveInt(data?.employee?.id || data?.user?.id || data?.admin_id);
-  const ok = r.ok && data?.ok !== false && (!!data?.admin || !!userId);
+  const userId = positiveInt(data?.employee?.id || data?.user?.id || data?.admin_id), ok = r.ok && data?.ok !== false && (!!data?.admin || !!userId);
   return { ok, admin: !!data?.admin, userId, data, response: ok ? J(data) : r };
 }
 
@@ -243,7 +250,8 @@ function adminIds(env: Env) { return String((env as any).ADMIN_IDS || '').split(
 function emptyPayment(): PaymentDetails { return { bank: '', sbp_phone: '', recipient: '', card_last4: '' }; }
 function normalizePayment(v: any): PaymentDetails { return { bank: clean(v?.bank, 80), sbp_phone: clean(v?.sbp_phone, 40), recipient: clean(v?.recipient, 120), card_last4: clean(v?.card_last4, 4).replace(/\D/g, '').slice(0, 4) }; }
 function samePayment(a: PaymentDetails, b: PaymentDetails) { return a.bank === b.bank && a.sbp_phone === b.sbp_phone && a.recipient === b.recipient && a.card_last4 === b.card_last4; }
-function paymentText(p: PaymentDetails) { const parts = [p.bank || 'Банк не указан', p.sbp_phone ? `СБП ${p.sbp_phone}` : '', p.recipient ? `Получатель: ${p.recipient}` : '', p.card_last4 ? `Карта •••• ${p.card_last4}` : ''].filter(Boolean); return parts.join('\n'); }
+function payoutMethod(p: any) { return [clean(p?.payment_bank ?? p?.bank, 80), clean(p?.payment_sbp_phone ?? p?.sbp_phone, 40) ? `СБП ${clean(p?.payment_sbp_phone ?? p?.sbp_phone, 40)}` : '', clean(p?.payment_card_last4 ?? p?.card_last4, 4) ? `•••• ${clean(p?.payment_card_last4 ?? p?.card_last4, 4)}` : ''].filter(Boolean).join(' · '); }
+function paymentText(p: PaymentDetails) { return [p.bank || 'Банк не указан', p.sbp_phone ? `СБП ${p.sbp_phone}` : '', p.recipient ? `Получатель: ${p.recipient}` : '', p.card_last4 ? `Карта •••• ${p.card_last4}` : ''].filter(Boolean).join('\n'); }
 function addressOf(o: any) { return [o?.city, o?.address, o?.apartment ? `кв./офис ${o.apartment}` : ''].filter(Boolean).join(', ') || 'Адрес не указан'; }
 function money(v: any) { return new Intl.NumberFormat('ru-RU').format(Math.round(Number(v || 0))) + ' ₽'; }
 function positiveInt(v: any) { const n = Number(v); return Number.isInteger(n) && n > 0 ? n : 0; }
