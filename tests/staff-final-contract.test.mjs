@@ -8,12 +8,14 @@ const prodUi = fs.readFileSync('src/staff-production-ui.ts', 'utf8');
 const prodServer = fs.readFileSync('src/staff-production.ts', 'utf8');
 const runtimeUi = fs.readFileSync('src/staff-runtime-ui.ts', 'utf8');
 const runtimeServer = fs.readFileSync('src/staff-runtime.ts', 'utf8');
+const currentServer = fs.readFileSync('src/staff-current.ts', 'utf8');
 const index = fs.readFileSync('src/index.ts', 'utf8');
 const wrangler = fs.readFileSync('wrangler.jsonc', 'utf8');
 const baseUi = fs.readFileSync('src/staff-v3-ui.ts', 'utf8');
 
 test('stable STAFF runtime entrypoint is active', () => {
-  assert.match(index, /from '\.\/staff-runtime'/);
+  assert.match(index, /from '\.\/staff-current'/);
+  assert.match(currentServer, /from '\.\/staff-runtime'/);
   assert.match(runtimeServer, /staff-runtime-operations-2026-09-16-b/);
 });
 
