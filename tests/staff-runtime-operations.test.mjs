@@ -5,10 +5,14 @@ import fs from 'node:fs';
 const server = fs.readFileSync('src/staff-runtime.ts', 'utf8');
 const ui = fs.readFileSync('src/staff-runtime-ui.ts', 'utf8');
 const current = fs.readFileSync('src/staff-current.ts', 'utf8');
+const operations = fs.readFileSync('src/staff-operations.ts', 'utf8');
+const safe = fs.readFileSync('src/staff-operations-safe.ts', 'utf8');
 const index = fs.readFileSync('src/index.ts', 'utf8');
 
-test('runtime remains the operational base of the active STAFF entrypoint', () => {
-  assert.match(index, /from '\.\/staff-current'/);
+test('runtime remains the operational base of the active safe STAFF entrypoint', () => {
+  assert.match(index, /from '\.\/staff-operations-safe'/);
+  assert.match(safe, /from '\.\/staff-operations'/);
+  assert.match(operations, /from '\.\/staff-current'/);
   assert.match(current, /from '\.\/staff-runtime'/);
   assert.match(server, /staff-runtime-operations-2026-09-16-b/);
 });

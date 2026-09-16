@@ -1,0 +1,1 @@
+QA focus: start two orders as the same lead cleaner, add before photos to each, switch between tasks, verify drafts stay isolated, complete both reports independently, then accept both as manager.
