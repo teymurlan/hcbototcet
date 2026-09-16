@@ -24,6 +24,14 @@ test('subscription visits render as visible framed date/time cards on iPhone',()
   assert.ok(ui.includes("row.querySelector('.rt-time')"));
 });
 
+test('UI patching is event-driven and does not continuously scan the DOM',()=>{
+  assert.ok(ui.includes('function queuePatch()'));
+  assert.ok(ui.includes("document.addEventListener('click'"));
+  assert.ok(ui.includes("document.addEventListener('change'"));
+  assert.ok(!ui.includes('new MutationObserver('));
+  assert.ok(!/setInterval\s*\(/.test(ui));
+});
+
 test('delegated admins are injected into the existing ADMIN_IDS authorization path',()=>{
   assert.ok(server.includes('withDelegatedAdmins'));
   assert.ok(server.includes("return {...env,ADMIN_IDS:ids.join(',')} as Env"));
