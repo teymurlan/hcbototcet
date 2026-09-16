@@ -4,7 +4,7 @@ import { STAFF_HUMAN_ORDER_APP } from './staff-human-orders-ui';
 
 export type { Env } from './staff-mira-style';
 
-const BUILD='staff-human-orders-2026-09-16-a';
+const BUILD='staff-human-orders-2026-09-16-b';
 
 type DisplayInput={order_number:string;created_at?:string;createdAt?:string;date?:string;time?:string};
 type DisplayMap=Record<string,number>;
@@ -39,7 +39,7 @@ export default {
     const u=new URL(req.url);
     if(req.method==='GET'&&u.pathname==='/__hc_staff_version'){
       const base=await mira.fetch(req,env,ctx as any).catch(()=>null);let info:any={};try{if(base)info=await base.json()}catch{}
-      return J({...info,ok:true,build:BUILD,human_order_numbers:true,compact_order_cards:true,logic_unchanged:true});
+      return J({...info,ok:true,build:BUILD,human_order_numbers:true,compact_order_cards:true,stable_rerender_labels:true,logic_unchanged:true});
     }
     if(req.method==='GET'&&['/staff','/staff/','/admin'].includes(u.pathname))return html(STAFF_HUMAN_ORDER_APP);
     if(req.method==='GET'&&u.pathname==='/api/staff/orders')return enrichOrders(req,env,ctx);
@@ -54,23 +54,28 @@ async function enrichOrders(req:Request,env:Env,ctx?:ExecutionContext){
   const r=await mira.fetch(req,env,ctx as any);if(!r.ok)return r;
   const data:any=await r.clone().json().catch(()=>null);if(!data||!Array.isArray(data.orders))return r;
   const labels=await ensureLabels(env,data.orders);
-  return J({...data,orders:data.orders.map((o:any)=>({...o,display_number:Number(labels[String(o.order_number)]||0)}))});
+  return J({...data,orders:data.orders.map((o:any)=>({...o,display_number:Number(labels[String(o.order_number)]||0),display_customer_name:humanCustomerName(o)}))});
 }
 async function enrichOrder(req:Request,env:Env,ctx?:ExecutionContext){
   const r=await mira.fetch(req,env,ctx as any);if(!r.ok)return r;
   const data:any=await r.clone().json().catch(()=>null);if(!data||!data.order)return r;
   const labels=await ensureLabels(env,[data.order]);
-  return J({...data,order:{...data.order,display_number:Number(labels[String(data.order.order_number)]||0)}});
+  return J({...data,order:{...data.order,display_number:Number(labels[String(data.order.order_number)]||0),display_customer_name:humanCustomerName(data.order)}});
 }
 async function orderLabels(req:Request,env:Env,ctx?:ExecutionContext){
   const u=new URL(req.url);u.pathname='/api/staff/orders';u.search='';
   const r=await mira.fetch(new Request(u.toString(),{method:'GET',headers:req.headers}),env,ctx as any);if(!r.ok)return r;
   const data:any=await r.json().catch(()=>({})),orders=Array.isArray(data.orders)?data.orders:[],labels=await ensureLabels(env,orders);
-  return J({ok:true,orders:orders.map((o:any)=>({order_number:String(o.order_number||''),display_number:Number(labels[String(o.order_number)]||0),customer_name:o.customer_name||'',city:o.city||'',address:o.address||'',apartment:o.apartment||'',service_name:o.service_name||'',status:o.status||'',date:o.date||'',time:o.time||''}))});
+  return J({ok:true,orders:orders.map((o:any)=>({order_number:String(o.order_number||''),display_number:Number(labels[String(o.order_number)]||0),customer_name:humanCustomerName(o),city:o.city||'',address:o.address||'',apartment:o.apartment||'',service_name:o.service_name||'',status:o.status||'',date:o.date||'',time:o.time||'',phone:o.phone||''}))});
 }
 async function ensureLabels(env:Env,orders:any[]):Promise<DisplayMap>{
   const id=(env as any).STATE.idFromName('global'),stub=(env as any).STATE.get(id),payload={orders:(orders||[]).map(o=>({order_number:o?.order_number,created_at:o?.created_at,createdAt:o?.createdAt,date:o?.date,time:o?.time}))};
   const r=await stub.fetch('https://state.local/opshuman/ensure',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(payload)}),x:any=await r.json().catch(()=>({}));return x.labels||{};
+}
+function humanCustomerName(o:any){
+  const candidates=[o?.customer_name,o?.client_name,o?.contact_name,o?.full_name,o?.customer?.name,o?.client?.name,o?.name];
+  for(const value of candidates){const v=clean(value,180);if(v)return v}
+  return 'Клиент';
 }
 function displaySortKey(o:DisplayInput){return clean(o.created_at||o.createdAt,80)||`${clean(o.date,20)}T${clean(o.time,20)}`||o.order_number}
 function cleanOrder(v:any){const s=String(v??'').trim();return/^[A-Za-z0-9._-]{3,120}$/.test(s)?s:''}
