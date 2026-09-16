@@ -5,7 +5,7 @@ import { applyStaffMotionSystem } from './staff-motion-system';
 
 export type { Env } from './staff-mira-style';
 
-const BUILD='staff-human-orders-2026-09-16-d';
+const BUILD='staff-human-orders-2026-09-16-e';
 const STAFF_APP=applyStaffMotionSystem(STAFF_HUMAN_ORDER_APP);
 
 type DisplayInput={order_number:string;created_at?:string;createdAt?:string;date?:string;time?:string};
@@ -41,7 +41,7 @@ export default {
     const u=new URL(req.url);
     if(req.method==='GET'&&u.pathname==='/__hc_staff_version'){
       const base=await mira.fetch(req,env,ctx as any).catch(()=>null);let info:any={};try{if(base)info=await base.json()}catch{}
-      return J({...info,ok:true,build:BUILD,human_order_numbers:true,compact_order_cards:true,stable_rerender_labels:true,stable_orders_screen:true,standards_motion:true,event_driven_ui:true,no_dom_polling:true,app_motion_system:true,moving_nav_indicator:true,native_toasts:true,logic_unchanged:true});
+      return J({...info,ok:true,build:BUILD,human_order_numbers:true,compact_order_cards:true,stable_rerender_labels:true,stable_orders_screen:true,standards_motion:true,event_driven_ui:true,no_dom_polling:true,app_motion_system:true,moving_nav_indicator:true,native_toasts:true,screen_motion:true,sheet_motion:true,media_fade:true,reduced_motion:true,logic_unchanged:true});
     }
     if(req.method==='GET'&&['/staff','/staff/','/admin'].includes(u.pathname))return html(STAFF_APP);
     if(req.method==='GET'&&u.pathname==='/api/staff/orders')return enrichOrders(req,env,ctx);
