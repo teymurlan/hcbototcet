@@ -6,10 +6,12 @@ const server=fs.readFileSync('src/staff-admin-access.ts','utf8');
 const ui=fs.readFileSync('src/staff-admin-access-ui.ts','utf8');
 const safe=fs.readFileSync('src/staff-operations-safe.ts','utf8');
 const defects=fs.readFileSync('src/staff-defects-performance.ts','utf8');
+const style=fs.readFileSync('src/staff-mira-style.ts','utf8');
 const index=fs.readFileSync('src/index.ts','utf8');
 
-test('admin access remains active under the defect/performance entrypoint without bypassing safe operations',()=>{
-  assert.match(index,/from '\.\/staff-defects-performance'/);
+test('admin access remains active under visual and defect wrappers without bypassing safe operations',()=>{
+  assert.match(index,/from '\.\/staff-mira-style'/);
+  assert.match(style,/from '\.\/staff-defects-performance'/);
   assert.match(defects,/from '\.\/staff-admin-access'/);
   assert.match(server,/from '\.\/staff-operations-safe'/);
   assert.match(safe,/from '\.\/staff-operations'/);
