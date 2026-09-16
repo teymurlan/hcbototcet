@@ -22,12 +22,21 @@ test('display order numbers are stable and stored separately from real order_num
   assert.ok(!server.includes('o.order_number='));
 });
 
-test('cards show compact human order labels, client and address styling',()=>{
-  for(const token of ['Заказ #','hc-short-order','hc-card-client','hc-worker-client','.order-address']) assert.ok(ui.includes(token),token);
+test('customer display name comes from order data instead of Telegram UI username',()=>{
+  assert.ok(server.includes('humanCustomerName'));
+  assert.ok(server.includes('display_customer_name'));
+  assert.ok(server.includes('o?.customer_name'));
+  assert.ok(ui.includes('display_customer_name'));
 });
 
-test('attention text uses clear employee assignment wording',()=>{
+test('cards show compact human order labels, client and address styling',()=>{
+  for(const token of ['Заказ #','hc-short-order','hc-card-client','hc-worker-client','.order-address','hc-human-address']) assert.ok(ui.includes(token),token);
+  assert.ok(ui.includes("card.closest('.rt-priority-list')"));
+});
+
+test('attention text uses a framed nested issue with clear employee assignment wording',()=>{
   assert.ok(ui.includes('Нет назначенных сотрудников'));
+  assert.ok(ui.includes('hc-attention-card'));
   assert.ok(ui.includes('hc-attention-reason'));
   assert.ok(ui.includes('hc-attention-address'));
 });
@@ -36,9 +45,11 @@ test('new application and all operational states are small distinct badges',()=>
   for(const token of ['hc-event-badge','Новая заявка','Ждёт проверки','hc-status-new','hc-status-review','hc-status-work','hc-status-done','hc-status-cancelled']) assert.ok(ui.includes(token),token);
 });
 
-test('presentation patch avoids MutationObserver and periodic polling',()=>{
+test('presentation repair follows real rerenders without MutationObserver or periodic polling',()=>{
   assert.ok(!ui.includes('MutationObserver'));
   assert.ok(!ui.includes('setInterval('));
-  assert.ok(ui.includes("document.addEventListener('click'"));
+  assert.ok(ui.includes('function burst()'));
+  assert.ok(ui.includes("String(url).indexOf('/api/staff/orders')"));
+  assert.ok(ui.includes("window.addEventListener('scroll'"));
   assert.ok(ui.includes("window.addEventListener('pageshow'"));
 });
