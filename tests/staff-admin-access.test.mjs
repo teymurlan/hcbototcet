@@ -5,10 +5,12 @@ import fs from 'node:fs';
 const server=fs.readFileSync('src/staff-admin-access.ts','utf8');
 const ui=fs.readFileSync('src/staff-admin-access-ui.ts','utf8');
 const safe=fs.readFileSync('src/staff-operations-safe.ts','utf8');
+const defects=fs.readFileSync('src/staff-defects-performance.ts','utf8');
 const index=fs.readFileSync('src/index.ts','utf8');
 
-test('admin access layer is the active entrypoint without bypassing safe operations',()=>{
-  assert.match(index,/from '\.\/staff-admin-access'/);
+test('admin access remains active under the defect/performance entrypoint without bypassing safe operations',()=>{
+  assert.match(index,/from '\.\/staff-defects-performance'/);
+  assert.match(defects,/from '\.\/staff-admin-access'/);
   assert.match(server,/from '\.\/staff-operations-safe'/);
   assert.match(safe,/from '\.\/staff-operations'/);
   assert.ok(server.includes('staff-admin-access-2026-09-16-a'));
