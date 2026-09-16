@@ -6,10 +6,12 @@ const server = fs.readFileSync('src/staff-operations.ts','utf8');
 const ui = fs.readFileSync('src/staff-operations-ui.ts','utf8');
 const safeServer = fs.readFileSync('src/staff-operations-safe.ts','utf8');
 const safeUi = fs.readFileSync('src/staff-operations-safe-ui.ts','utf8');
+const accessServer = fs.readFileSync('src/staff-admin-access.ts','utf8');
 const index = fs.readFileSync('src/index.ts','utf8');
 
-test('parallel operations safety layer is the active STAFF entrypoint',()=>{
-  assert.match(index,/from '\.\/staff-operations-safe'/);
+test('parallel operations safety layer remains active under admin access',()=>{
+  assert.match(index,/from '\.\/staff-admin-access'/);
+  assert.match(accessServer,/from '\.\/staff-operations-safe'/);
   assert.match(server,/staff-operations-parallel-reports-2026-09-16-a/);
   assert.match(safeServer,/staff-operations-parallel-safe-2026-09-16-b/);
   assert.match(server,/from '\.\/staff-current'/);
@@ -65,4 +67,6 @@ test('legacy in-progress singleton report migrates without losing drafts',()=>{
   assert.ok(server.includes("this.state.storage.get(`job:${id}`)"));
   assert.ok(server.includes("this.state.storage.get<MediaItem[]>(`draft:${id}:${stage}`)"));
   assert.ok(server.includes('promoteLegacy'));
+  assert.ok(accessServer.includes('safeLegacyDraftMigration'));
+  assert.ok(accessServer.includes('await this.state.storage.delete(oldKey)'));
 });
