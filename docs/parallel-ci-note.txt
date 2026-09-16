@@ -1,0 +1,1 @@
+Run STAFF parallel report contract tests and Wrangler dry-run before merge.
