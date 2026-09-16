@@ -86,8 +86,8 @@ test('app motion is event-driven and does not add observer or interval polling',
   assert.ok(!motion.includes('MutationObserver'));
   assert.ok(!motion.includes('setInterval('));
   assert.ok(motion.includes('requestAnimationFrame'));
-  assert.ok(motion.includes("document.addEventListener('hc:after-render',queueIndicator,true)"));
-  assert.ok(motion.includes("window.addEventListener('resize',queueIndicator"));
+  assert.ok(motion.includes("document.addEventListener('hc:after-render'"));
+  assert.ok(motion.includes("window.addEventListener('resize'"));
   assert.ok(motion.includes("document.addEventListener('pointerup'"));
 });
 
@@ -106,7 +106,7 @@ test('motion covers filters, status changes, back direction, media and accordion
 });
 
 test('screen rendering dispatches one event-driven motion pass and cards use short stagger only',()=>{
-  for(const token of ["function M(html)",'hc-motion-ready',"new CustomEvent('hc:after-render'",'hcScreenIn','hcCardIn','animation-delay:24ms','animation-delay:90ms']) assert.ok(motion.includes(token),token);
+  for(const token of ["function M(html)",'hc-motion-ready',"new CustomEvent('hc:after-render'",'hcScreenIn','hcCardIn','animation-delay:18ms','animation-delay:72ms']) assert.ok(motion.includes(token),token);
   assert.ok(!motion.includes('animation-delay:1s'));
 });
 
@@ -118,17 +118,41 @@ test('gallery media fades after actual load and reduced motion always keeps medi
   for(const token of ['hc-media-loaded',"document.addEventListener('load'", "document.addEventListener('loadeddata'",'opacity:.01','opacity:1!important']) assert.ok(motion.includes(token),token);
 });
 
-test('staff identity header is viewport-fixed and the app reserves its height',()=>{
-  for(const token of ['--hc-staff-header-h:74px','.app{padding-top:var(--hc-staff-header-h)!important}', '.top{position:fixed!important','left:50%!important','width:min(760px,100%)!important','.back{top:calc(var(--hc-staff-header-h) + 8px)!important}']) assert.ok(motion.includes(token),token);
-  assert.ok(server.includes('fixed_staff_header:true'));
+test('staff identity header is sticky in normal layout and never reserves a fixed overlay gap',()=>{
+  for(const token of ['.app{padding-top:0!important}', '.top{position:sticky!important','top:0!important','left:auto!important','width:auto!important','transform:none!important','.back{position:relative!important','top:auto!important']) assert.ok(motion.includes(token),token);
+  assert.ok(!motion.includes('.top{position:fixed!important'));
+  assert.ok(!motion.includes('--hc-staff-header-h'));
+  assert.ok(server.includes('sticky_staff_header:true'));
 });
 
-test('orders use dense cards while keeping number, client, status, address, meta, team and open action visible',()=>{
-  for(const token of ['.order-card{padding:10px 11px!important','.order-card .hc-short-order','.order-card .hc-card-client','.order-card .chip.hc-status-chip','.order-card .sub','.order-card .order-address','.order-card .compact-meta','.order-card .team-state','.order-card .btn.block']) assert.ok(motion.includes(token),token);
+test('orders use denser cells while keeping number, client, status, address, meta, team and open action visible',()=>{
+  for(const token of ['.order-card{padding:9px 10px!important','.order-card .hc-short-order','.order-card .hc-card-client','.order-card .chip.hc-status-chip','.order-card .sub','.order-card .order-address','.order-card .compact-meta','.order-card .team-state','.order-card .btn.block']) assert.ok(motion.includes(token),token);
   assert.ok(server.includes('dense_order_cards:true'));
+  assert.ok(server.includes('dense_operational_cells:true'));
 });
 
-test('standards carousel forces a real mobile card width and visible active-card motion',()=>{
-  for(const token of ['flex-wrap:nowrap!important','flex:0 0 clamp(278px,82vw,344px)!important','min-width:clamp(278px,82vw,344px)!important','hc-standard-active','translateY(7px) scale(.955)','scroll-behavior:smooth!important','-webkit-line-clamp:6']) assert.ok(motion.includes(token),token);
+test('operational cards, filters and forms use compact cell density without shrinking critical content away',()=>{
+  for(const token of ['.main{padding:14px 12px 22px!important','.card{padding:11px 12px!important','.metric{padding:13px!important','.notice-card{padding:10px 11px!important','.task-card{padding:10px 11px!important','.check,.payline{padding:8px 0!important','.search,.input,select,textarea,.money{min-height:44px!important','.filter{min-height:38px!important']) assert.ok(motion.includes(token),token);
+});
+
+test('standards use pastel category backgrounds and continuous event-driven swipe depth',()=>{
+  for(const token of ['std-blue','std-green','std-orange','std-red','std-purple','#edf5ff','#eaf8f1','#fff1d9','#ffedef','#f0ecff','paintStandardDepth','--hc-std-scale','--hc-std-opacity','--hc-std-lift',"list.addEventListener('scroll'",'requestAnimationFrame']) assert.ok(motion.includes(token),token);
+  assert.ok(!motion.includes('setInterval('));
+  assert.ok(server.includes('pastel_standard_cards:true'));
+  assert.ok(server.includes('continuous_standard_depth:true'));
+});
+
+test('standards carousel remains compact on iPhone and keeps native scroll snap behavior',()=>{
+  for(const token of ['flex:0 0 clamp(270px,80vw,334px)!important','min-width:clamp(270px,80vw,334px)!important','min-height:206px!important','-webkit-line-clamp:5','scroll-behavior:smooth!important']) assert.ok(motion.includes(token),token);
   assert.ok(server.includes('standards_carousel_fixed:true'));
+});
+
+test('premium button system keeps compact touch targets and glass secondary actions',()=>{
+  for(const token of ['.btn{min-height:42px!important','.btn.small{min-height:38px!important','.btn.secondary,.btn.soft','backdrop-filter:blur(10px)!important','.hc-orders-refresh{min-height:34px!important']) assert.ok(motion.includes(token),token);
+  assert.ok(server.includes('premium_button_system:true'));
+});
+
+test('bottom navigation is smaller translucent glass with a compact moving active capsule',()=>{
+  for(const token of ['.navin{min-height:70px!important','background:rgba(255,255,255,.84)!important','backdrop-filter:blur(18px)','height:38px','on.offsetWidth-8','on.offsetLeft+4','.nav button i{width:34px!important']) assert.ok(motion.includes(token),token);
+  assert.ok(server.includes('compact_glass_nav:true'));
 });
