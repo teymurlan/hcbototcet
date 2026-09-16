@@ -13,8 +13,8 @@ test('current stable STAFF runtime is active',()=>{
 
 test('legacy overpayment cannot reduce a future cleaning accrual',()=>{
   assert.ok(server.includes('ignoredLegacyOverpay'));
-  assert.ok(server.includes('const applied = Math.min(value, balance)'));
-  assert.ok(server.includes('balance -= applied'));
+  assert.match(server,/applied\s*=\s*Math\.min\(value,\s*balance\)/);
+  assert.match(server,/balance\s*-=\s*applied/);
   assert.ok(server.includes('legacy_overpayment_ignored'));
 });
 
