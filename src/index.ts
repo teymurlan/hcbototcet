@@ -1,8 +1,8 @@
-import staff from './staff-defects-performance';
-import type { Env } from './staff-defects-performance';
+import staff from './staff-mira-style';
+import type { Env } from './staff-mira-style';
 
-export { AppState } from './staff-defects-performance';
-export type { Env } from './staff-defects-performance';
+export { AppState } from './staff-mira-style';
+export type { Env } from './staff-mira-style';
 
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
