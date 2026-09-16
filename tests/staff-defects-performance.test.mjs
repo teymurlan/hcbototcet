@@ -4,10 +4,12 @@ import fs from 'node:fs';
 
 const server=fs.readFileSync('src/staff-defects-performance.ts','utf8');
 const ui=fs.readFileSync('src/staff-defects-performance-ui.ts','utf8');
+const style=fs.readFileSync('src/staff-mira-style.ts','utf8');
 const index=fs.readFileSync('src/index.ts','utf8');
 
-test('defect/performance layer is active above administrator and safe operation layers',()=>{
-  assert.match(index,/from '\.\/staff-defects-performance'/);
+test('defect/performance layer remains active under the visual-only style wrapper',()=>{
+  assert.match(index,/from '\.\/staff-mira-style'/);
+  assert.match(style,/from '\.\/staff-defects-performance'/);
   assert.match(server,/from '\.\/staff-admin-access'/);
   assert.match(ui,/from '\.\/staff-admin-access-ui'/);
   assert.ok(server.includes('staff-defects-performance-2026-09-16-b'));
