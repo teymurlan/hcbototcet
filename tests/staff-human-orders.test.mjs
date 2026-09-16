@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const server=fs.readFileSync('src/staff-human-orders.ts','utf8');
 const ui=fs.readFileSync('src/staff-human-orders-ui.ts','utf8');
+const motion=fs.readFileSync('src/staff-motion-system.ts','utf8');
 const index=fs.readFileSync('src/index.ts','utf8');
 const injected=ui.slice(ui.indexOf('const ORDER_UI_SCRIPT'),ui.indexOf('const STABLE_BASE_APP'));
 
@@ -73,4 +74,35 @@ test('standards have swipe carousel, progress, detail sheet, haptic and reduced 
   assert.ok(server.includes('standards_motion:true'));
   assert.ok(server.includes('event_driven_ui:true'));
   assert.ok(server.includes('no_dom_polling:true'));
+});
+
+test('app-wide motion enhancer is active without changing the server layer chain',()=>{
+  assert.match(server,/from '\.\/staff-motion-system'/);
+  assert.ok(server.includes('applyStaffMotionSystem(STAFF_HUMAN_ORDER_APP)'));
+  assert.ok(server.includes('app_motion_system:true'));
+  assert.ok(server.includes('moving_nav_indicator:true'));
+  assert.ok(server.includes('native_toasts:true'));
+});
+
+test('app motion is event-driven and does not add observer or interval polling',()=>{
+  assert.ok(!motion.includes('MutationObserver'));
+  assert.ok(!motion.includes('setInterval('));
+  assert.ok(motion.includes('requestAnimationFrame'));
+  assert.ok(motion.includes("document.addEventListener('hc:after-render',queueIndicator,true)"));
+  assert.ok(motion.includes("window.addEventListener('resize',queueIndicator"));
+  assert.ok(motion.includes("document.addEventListener('pointerup'"));
+});
+
+test('bottom navigation has one moving capsule based on actual button geometry',()=>{
+  for(const token of ['hc-nav-indicator','on.offsetWidth','on.offsetLeft','translate3d(','cubic-bezier(.2,.78,.22,1)']) assert.ok(motion.includes(token),token);
+});
+
+test('native-looking toast routes existing helpers without polling and keeps haptics safe',()=>{
+  for(const token of ['window.__hcToast','hc-toast-host','aria-live','notificationOccurred','impactOccurred','window.setTimeout']) assert.ok(motion.includes(token),token);
+  assert.ok(motion.includes("k==='info'?'light':k"));
+  assert.ok(motion.includes('tg.showAlert'));
+});
+
+test('motion covers filters, status changes, back direction, media and accordions with reduced motion fallback',()=>{
+  for(const token of ['hcFilterIn','hcStateIn','hcWarningIn','hcSuccessIn','hcScreenBack','hcAccordionIn','hc-direction-back','details[open]','hc-viewer-media','prefers-reduced-motion:reduce']) assert.ok(motion.includes(token),token);
 });
