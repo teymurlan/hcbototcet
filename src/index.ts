@@ -1,8 +1,8 @@
-import staff from './staff-runtime';
-import type { Env } from './staff-runtime';
+import staff from './staff-current';
+import type { Env } from './staff-current';
 
-export { AppState } from './staff-runtime';
-export type { Env } from './staff-runtime';
+export { AppState } from './staff-current';
+export type { Env } from './staff-current';
 
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
