@@ -12,7 +12,6 @@ const MAX_FILE = 20 * 1024 * 1024;
 
 type TgUser = { id:number; first_name?:string; last_name?:string; username?:string };
 type MediaItem = { id:string; clientId?:string; type:'photo'|'video'; fileId:string; name:string; size:number; addedAt:number; transport?:string };
-
 type AuthState = { ok:boolean; admin:boolean; userId:number; data:any; response:Response };
 
 export class AppState extends CurrentAppState {
@@ -90,7 +89,7 @@ export class AppState extends CurrentAppState {
     }
 
     if (u.pathname === '/opsmulti/stage' && req.method === 'POST') {
-      const x:any = await readBody(req), job=x?.job, id=positiveInt(job?.userId), order=clean(job?.booking_order_number,120), stage=clean(x.stage,20), files:Array.isArray(x.files)?x.files:[];
+      const x:any = await readBody(req), job=x?.job, id=positiveInt(job?.userId), order=clean(job?.booking_order_number,120), stage=clean(x.stage,20), files=Array.isArray(x.files)?x.files:[];
       if (!id || !order || !job?.id || !['before','after'].includes(stage)) return J({ok:false,error:'Некорректный фотоотчёт'},400);
       const next = {...job, multi_report:true, updatedAt:Date.now()};
       await this.state.storage.put(`archive:${job.id}:${stage}`,files);
@@ -431,7 +430,7 @@ async function uploadTelegram(env:Env,method:string,field:string,chatId:number,f
   } finally { clearTimeout(timer); }
 }
 
-function detectMediaType(file:File):'photo'|'video'|null {const t=String(file.type||'').toLowerCase(),n=String(file.name||'').toLowerCase();if(t.startsWith('video/')||/\.(mp4|mov|m4v|webm)$/.test(n))return'video';if(t.startsWith('image/')||!t&&/\.(jpg|jpeg|png|webp|heic|heif)$/.test(n))return'photo';return null}
+function detectMediaType(file:File):'photo'|'video'|null {const t=String(file.type||'').toLowerCase(),n=String(file.name||'').toLowerCase();if(t.startsWith('video/')||/\.(mp4|mov|m4v|webm)$/.test(n))return'video';if(t.startsWith('image/')||(!t&&/\.(jpg|jpeg|png|webp|heic|heif)$/.test(n)))return'photo';return null}
 
 async function notifyAdmins(env:Env,text:string,origin:string){await Promise.all(adminIds(env).map(id=>sendPersistent(env,Number(id),text,origin,'',true).catch(()=>null)))}
 async function sendPersistent(env:Env,chatId:number,text:string,origin:string,launch:string,admin:boolean){const url=`${origin}/staff${launch?`?launch=${encodeURIComponent(launch)}`:''}`,label=admin?'📲 Открыть кабинет руководителя':'📲 Открыть HOUSE CLEANING STAFF';return tg(env,'sendMessage',{chat_id:chatId,text,parse_mode:'HTML',reply_markup:{keyboard:[[{text:label,web_app:{url}}]],resize_keyboard:true,is_persistent:true,input_field_placeholder:'HOUSE CLEANING STAFF'}},9000)}
