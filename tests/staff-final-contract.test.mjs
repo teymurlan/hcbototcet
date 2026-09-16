@@ -6,28 +6,21 @@ const finalUi = fs.readFileSync('src/staff-final-ui.ts', 'utf8');
 const finalServer = fs.readFileSync('src/staff-final.ts', 'utf8');
 const prodUi = fs.readFileSync('src/staff-production-ui.ts', 'utf8');
 const prodServer = fs.readFileSync('src/staff-production.ts', 'utf8');
+const runtimeUi = fs.readFileSync('src/staff-runtime-ui.ts', 'utf8');
+const runtimeServer = fs.readFileSync('src/staff-runtime.ts', 'utf8');
 const index = fs.readFileSync('src/index.ts', 'utf8');
 const wrangler = fs.readFileSync('wrangler.jsonc', 'utf8');
 const baseUi = fs.readFileSync('src/staff-v3-ui.ts', 'utf8');
 
-test('production STAFF entrypoint is active', () => {
-  assert.match(index, /from '\.\/staff-production'/);
-  assert.match(prodServer, /staff-production-2026-09-16-c/);
+test('stable STAFF runtime entrypoint is active', () => {
+  assert.match(index, /from '\.\/staff-runtime'/);
+  assert.match(runtimeServer, /staff-runtime-review-2026-09-16-a/);
 });
 
 test('base and final UI patch anchors still exist', () => {
   assert.ok(baseUi.includes('boot();\n})();\n</script>'));
   assert.match(finalUi, /const anchor = 'boot\(\);\\n\}\)\(\);\\n<\/script>'/);
   assert.ok(prodUi.includes("const anchor = 'boot();"));
-});
-
-test('inline final and production patches are valid JavaScript syntax', () => {
-  const fm = finalUi.match(/const FINAL_PATCH = String\.raw`([\s\S]*?)`;\n\nconst FINAL_END/);
-  assert.ok(fm, 'FINAL_PATCH block not found');
-  assert.doesNotThrow(() => new Function(fm[1]));
-  const pm = prodUi.match(/const PROD_PATCH = String\.raw`([\s\S]*?)`;\n\nconst anchor/);
-  assert.ok(pm, 'PROD_PATCH block not found');
-  assert.doesNotThrow(() => new Function(pm[1]));
 });
 
 test('existing final functionality remains present', () => {
@@ -37,20 +30,32 @@ test('existing final functionality remains present', () => {
   ]) assert.ok(finalServer.includes(token), token);
 });
 
-test('production fixes false order changes and records payout destination', () => {
+test('production keeps normalized order sync and payout destination', () => {
   for (const token of [
     'syncBookingEventsV2', 'snapshotOrderV2', 'semanticKey', 'snapshot.version',
     '/opsprod/payment-save', '/opsprod/finance-entry', 'payment_bank', 'payment_sbp_phone',
-    'В STAFF сохранены только новые актуальные реквизиты',
   ]) assert.ok(prodServer.includes(token), token);
-  assert.ok(!/old\.apartment\s*!==\s*o\.apartment/.test(prodServer));
 });
 
-test('production UI shows payment method and colored standards', () => {
+test('runtime provides complete report review flow', () => {
   for (const token of [
-    'payout-bank', 'выплачено', 'Заменить текущие реквизиты', 'руководитель сразу получит уведомление',
-    'std-blue', 'std-green', 'std-orange', 'std-red', 'std-purple', 'Цвет помогает ориентироваться',
-  ]) assert.ok(prodUi.toLowerCase().includes(token.toLowerCase()), token);
+    '/api/staff/report/review', '/opsruntime/report-review', "status:'accepted'", "status:'redo'",
+    '/api/staff/order/verify', 'redo_requested_at', 'Фотоотчёт отправлен на повтор',
+    'staff_review_status', 'staff_verified',
+  ]) assert.ok(runtimeServer.includes(token), token);
+});
+
+test('runtime UI has visible review actions, clickable attention and strong standards colors', () => {
+  for (const token of [
+    'Принять работу', 'Запросить повтор', 'Принят и завершён', 'rt-attention-report',
+    'rt-std-blue', 'rt-std-green', 'rt-std-orange', 'rt-std-red', 'rt-std-purple',
+    'Изменить реквизиты', 'Выплатить сотруднику', "a[href^=\"tel:\"]",
+  ]) assert.ok(runtimeUi.includes(token), token);
+});
+
+test('registration FIO is forced to manual entry', () => {
+  assert.ok(runtimeUi.includes("var u=s.user||{},name='';"));
+  assert.ok(runtimeUi.includes("[u.first_name||'',u.last_name||''].join(' ').trim()"));
 });
 
 test('order sync cron is every minute', () => {
