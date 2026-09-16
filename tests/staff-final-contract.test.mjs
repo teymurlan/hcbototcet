@@ -14,7 +14,7 @@ const baseUi = fs.readFileSync('src/staff-v3-ui.ts', 'utf8');
 
 test('stable STAFF runtime entrypoint is active', () => {
   assert.match(index, /from '\.\/staff-runtime'/);
-  assert.match(runtimeServer, /staff-runtime-review-2026-09-16-a/);
+  assert.match(runtimeServer, /staff-runtime-operations-2026-09-16-b/);
 });
 
 test('base and final UI patch anchors still exist', () => {
@@ -49,7 +49,7 @@ test('runtime UI has visible review actions, clickable attention and strong stan
   for (const token of [
     'Принять работу', 'Запросить повтор', 'Принят и завершён', 'rt-attention-report',
     'rt-std-blue', 'rt-std-green', 'rt-std-orange', 'rt-std-red', 'rt-std-purple',
-    'Изменить реквизиты', 'Выплатить сотруднику', "a[href^=\"tel:\"]",
+    'Изменить реквизиты', 'Выплата отправлена', "a[href^=\"tel:\"]",
   ]) assert.ok(runtimeUi.includes(token), token);
 });
 
