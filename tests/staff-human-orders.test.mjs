@@ -117,3 +117,18 @@ test('manual sheet closes with reverse transition without changing synchronous f
 test('gallery media fades after actual load and reduced motion always keeps media visible',()=>{
   for(const token of ['hc-media-loaded',"document.addEventListener('load'", "document.addEventListener('loadeddata'",'opacity:.01','opacity:1!important']) assert.ok(motion.includes(token),token);
 });
+
+test('staff identity header is viewport-fixed and the app reserves its height',()=>{
+  for(const token of ['--hc-staff-header-h:74px','.app{padding-top:var(--hc-staff-header-h)!important}', '.top{position:fixed!important','left:50%!important','width:min(760px,100%)!important','.back{top:calc(var(--hc-staff-header-h) + 8px)!important}']) assert.ok(motion.includes(token),token);
+  assert.ok(server.includes('fixed_staff_header:true'));
+});
+
+test('orders use dense cards while keeping number, client, status, address, meta, team and open action visible',()=>{
+  for(const token of ['.order-card{padding:10px 11px!important','.order-card .hc-short-order','.order-card .hc-card-client','.order-card .chip.hc-status-chip','.order-card .sub','.order-card .order-address','.order-card .compact-meta','.order-card .team-state','.order-card .btn.block']) assert.ok(motion.includes(token),token);
+  assert.ok(server.includes('dense_order_cards:true'));
+});
+
+test('standards carousel forces a real mobile card width and visible active-card motion',()=>{
+  for(const token of ['flex-wrap:nowrap!important','flex:0 0 clamp(278px,82vw,344px)!important','min-width:clamp(278px,82vw,344px)!important','hc-standard-active','translateY(7px) scale(.955)','scroll-behavior:smooth!important','-webkit-line-clamp:6']) assert.ok(motion.includes(token),token);
+  assert.ok(server.includes('standards_carousel_fixed:true'));
+});

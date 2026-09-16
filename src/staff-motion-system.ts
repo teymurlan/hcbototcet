@@ -18,9 +18,42 @@ const APP_MOTION_CSS = String.raw`
 
 details>summary{cursor:pointer;-webkit-tap-highlight-color:transparent;transition:transform .15s ease,opacity .18s ease}details>summary:active{transform:scale(.99)}details[open]>*:not(summary){animation:hcAccordionIn .2s ease both}
 
+/* Keep the STAFF identity bar pinned without letting it cover page content. */
+:root{--hc-staff-header-h:74px}
+.app{padding-top:var(--hc-staff-header-h)!important}
+.top{position:fixed!important;top:0!important;left:50%!important;right:auto!important;width:min(760px,100%)!important;transform:translateX(-50%)!important;z-index:110!important;background:rgba(245,249,255,.97)!important;box-shadow:0 7px 22px rgba(34,68,120,.055)!important}
+.back{top:calc(var(--hc-staff-header-h) + 8px)!important}
+
+/* Dense order cards: preserve all operational information while showing more orders per screen. */
+.order-card{padding:10px 11px!important;border-radius:17px!important;margin-bottom:8px!important}
+.order-card .row{gap:7px!important;align-items:flex-start!important}
+.order-card .order-primary{min-width:0!important}
+.order-card .hc-order-heading{gap:6px!important;margin-bottom:2px!important;flex-wrap:nowrap!important}
+.order-card .hc-short-order{min-height:23px!important;padding:3px 7px!important;font-size:10px!important}
+.order-card .hc-card-client{font-size:15px!important;line-height:1.2!important}
+.order-card .row>.chip,.order-card .chip.hc-status-chip{flex:0 0 auto!important;font-size:10px!important;padding:4px 7px!important}
+.order-card .sub{font-size:11.5px!important;line-height:1.3!important;margin-top:3px!important}
+.order-card .order-address,.order-card .hc-human-address{font-size:12px!important;line-height:1.3!important;margin-top:5px!important}
+.order-card .compact-meta{gap:4px!important;margin-top:5px!important}
+.order-card .compact-meta span{font-size:9.8px!important;padding:3px 6px!important}
+.order-card .team-state{font-size:10px!important;padding:4px 7px!important;margin-top:5px!important;line-height:1.25!important}
+.order-card .btn.block{min-height:38px!important;padding:8px 12px!important;margin-top:7px!important;border-radius:13px!important;font-size:12.5px!important;box-shadow:0 5px 13px rgba(47,109,246,.11)!important}
+
+/* Standards: force one real card width on iPhone and make active-card motion visible. */
+#stdlist.hc-standards-track{display:flex!important;flex-wrap:nowrap!important;grid-template-columns:none!important;align-items:stretch!important;gap:12px!important;scroll-behavior:smooth!important;padding:7px 8vw 13px!important;scroll-padding-inline:8vw!important}
+#stdlist.hc-standards-track .standard-card{display:flex!important;flex-direction:column!important;flex:0 0 clamp(278px,82vw,344px)!important;width:clamp(278px,82vw,344px)!important;min-width:clamp(278px,82vw,344px)!important;max-width:344px!important;height:auto!important;min-height:222px!important;box-sizing:border-box!important;padding:17px 17px 16px!important;border-radius:23px!important;opacity:.58!important;transform:translateY(7px) scale(.955)!important;transition:transform .3s cubic-bezier(.2,.78,.22,1),opacity .24s ease,box-shadow .24s ease!important}
+#stdlist.hc-standards-track .standard-card.hc-standard-active{opacity:1!important;transform:translateY(0) scale(1)!important;box-shadow:0 16px 34px rgba(35,65,105,.13)!important}
+#stdlist.hc-standards-track .standard-card:active{transform:translateY(1px) scale(.985)!important}
+#stdlist.hc-standards-track .standard-card h3{font-size:19px!important;line-height:1.14!important;margin:10px 0 7px!important;letter-spacing:-.35px!important}
+#stdlist.hc-standards-track .standard-card p{font-size:12.5px!important;line-height:1.48!important;margin:0!important;display:-webkit-box!important;-webkit-box-orient:vertical!important;-webkit-line-clamp:6;overflow:hidden!important}
+#stdlist.hc-standards-track .hc-standard-top{min-height:25px!important}
+#stdlist.hc-standards-track .hc-standard-tag{padding:5px 8px!important;font-size:9px!important}
+.hc-std-controls{grid-template-columns:42px 1fr 42px!important;gap:9px!important;margin:2px 0 12px!important}.hc-std-arrow{width:42px!important;height:42px!important;font-size:23px!important}.hc-std-progress{gap:6px!important}.hc-std-count{font-size:11px!important}
+
 @keyframes hcScreenIn{from{opacity:0;transform:translateX(7px)}to{opacity:1;transform:none}}@keyframes hcScreenBack{from{opacity:0;transform:translateX(-7px)}to{opacity:1;transform:none}}@keyframes hcCardIn{from{opacity:0;transform:translateY(7px) scale(.994)}to{opacity:1;transform:none}}@keyframes hcFilterIn{from{opacity:.72;transform:scale(.97)}to{opacity:1;transform:none}}@keyframes hcStateIn{from{opacity:.55;transform:translateY(2px)}to{opacity:1;transform:none}}@keyframes hcWarningIn{from{opacity:.62;transform:translateY(4px)}to{opacity:1;transform:none}}@keyframes hcSuccessIn{from{opacity:.66;transform:translateY(4px)}to{opacity:1;transform:none}}@keyframes hcModalIn{from{opacity:0}to{opacity:1}}@keyframes hcModalOut{from{opacity:1}to{opacity:0}}@keyframes hcSheetIn{from{opacity:.75;transform:translateY(22px)}to{opacity:1;transform:none}}@keyframes hcSheetOut{from{opacity:1;transform:none}to{opacity:0;transform:translateY(15px)}}@keyframes hcViewerIn{from{opacity:.3;transform:scale(.985)}to{opacity:1;transform:none}}@keyframes hcAccordionIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 
-@media(prefers-reduced-motion:reduce){.hc-nav-indicator,.hc-toast,.filter,.rt-filterbar button,.toolbar button,.chip,.team-state,details>*,#main.hc-motion-ready>*,#main.hc-motion-ready .metric,#main.hc-motion-ready .order-card,#main.hc-motion-ready .task-card,#main.hc-motion-ready .employee,#main.hc-motion-ready .notice-card,.rt-modal,.rt-sheet,.hc-access-sheet,.hc-viewer.on,.hc-viewer.on .hc-viewer-media{animation:none!important;transition-duration:.01ms!important}.hc-media img,.hc-media video,.media img,.media video,.hc-viewer-media img,.hc-viewer-media video{opacity:1!important;transform:none!important;transition:none!important}}
+@media(max-width:390px){:root{--hc-staff-header-h:72px}.order-card{padding:9px 10px!important}.order-card .hc-card-client{font-size:14.5px!important}#stdlist.hc-standards-track .standard-card{flex-basis:clamp(278px,84vw,326px)!important;width:clamp(278px,84vw,326px)!important;min-width:clamp(278px,84vw,326px)!important;min-height:214px!important;padding:16px 16px 15px!important}}
+@media(prefers-reduced-motion:reduce){.hc-nav-indicator,.hc-toast,.filter,.rt-filterbar button,.toolbar button,.chip,.team-state,details>*,#main.hc-motion-ready>*,#main.hc-motion-ready .metric,#main.hc-motion-ready .order-card,#main.hc-motion-ready .task-card,#main.hc-motion-ready .employee,#main.hc-motion-ready .notice-card,.rt-modal,.rt-sheet,.hc-access-sheet,.hc-viewer.on,.hc-viewer.on .hc-viewer-media{animation:none!important;transition-duration:.01ms!important}.hc-media img,.hc-media video,.media img,.media video,.hc-viewer-media img,.hc-viewer-media video{opacity:1!important;transform:none!important;transition:none!important}#stdlist.hc-standards-track{scroll-behavior:auto!important}#stdlist.hc-standards-track .standard-card{transform:none!important;transition:none!important}}
 </style>`;
 
 const APP_MOTION_SCRIPT = String.raw`
