@@ -1,8 +1,8 @@
-import staff from './staff-admin-access';
-import type { Env } from './staff-admin-access';
+import staff from './staff-defects-performance';
+import type { Env } from './staff-defects-performance';
 
-export { AppState } from './staff-admin-access';
-export type { Env } from './staff-admin-access';
+export { AppState } from './staff-defects-performance';
+export type { Env } from './staff-defects-performance';
 
 export default {
   fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
