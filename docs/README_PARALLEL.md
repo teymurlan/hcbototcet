@@ -1,0 +1,1 @@
+Lead cleaners can now keep several order-specific photo reports active at the same time without mixing media or stages.
