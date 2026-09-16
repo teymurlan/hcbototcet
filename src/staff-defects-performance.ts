@@ -4,9 +4,11 @@ import { STAFF_DEFECTS_PERFORMANCE_APP } from './staff-defects-performance-ui';
 
 export type { Env } from './staff-admin-access';
 
-const BUILD='staff-defects-performance-2026-09-16-a';
+const BUILD='staff-defects-performance-2026-09-16-b';
 const STORE_NAME='house-cleaning-app-v1';
-const MAX_CLIENT_DEFECT_BYTES=12*1024*1024;
+const MAX_CLIENT_DEFECT_BYTES=20*1024*1024;
+const DEFECT_RETRY_DELAY_MS=60*1000;
+const DEFECT_RETRY_LIMIT=24;
 
 type DefectMeta={
   order_number:string;
@@ -19,6 +21,9 @@ type DefectMeta={
   manager_notified_at?:number;
   client_notified_at?:number;
   client_skipped_at?:number;
+  client_attempted_at?:number;
+  client_attempts?:number;
+  client_error?:string;
 };
 
 export class AppState extends AdminAccessAppState {
@@ -29,6 +34,10 @@ export class AppState extends AdminAccessAppState {
       if(!order)return J({ok:false,error:'Заказ не указан'},400);
       const rows=await this.state.storage.list<DefectMeta>({prefix:defectPrefix(order)});
       return J({ok:true,defects:[...rows.values()].sort((a,b)=>a.added_at-b.added_at)});
+    }
+    if(u.pathname==='/opsdefects/list-all'&&req.method==='GET'){
+      const rows=await this.state.storage.list<DefectMeta>({prefix:'opsdefect:'});
+      return J({ok:true,defects:[...rows.values()].filter(Boolean).sort((a,b)=>a.added_at-b.added_at)});
     }
     if(u.pathname==='/opsdefects/save'&&req.method==='POST'){
       const x:any=await readBody(req),order=cleanOrder(x.order_number),mediaId=cleanId(x.media_id),fileId=clean(x.file_id,300),note=clean(x.note,500);
@@ -41,7 +50,8 @@ export class AppState extends AdminAccessAppState {
       const x:any=await readBody(req),order=cleanOrder(x.order_number),mediaId=cleanId(x.media_id),key=defectKey(order,mediaId),row=await this.state.storage.get<DefectMeta>(key);
       if(!row)return J({ok:false,error:'Дефект не найден'},404);
       if(x.manager_notified)row.manager_notified_at=Number(row.manager_notified_at||Date.now());
-      if(x.client_notified)row.client_notified_at=Number(row.client_notified_at||Date.now());
+      if(x.client_attempted){row.client_attempted_at=Date.now();row.client_attempts=Number(row.client_attempts||0)+1;row.client_error=clean(x.client_error,500)}
+      if(x.client_notified){row.client_notified_at=Number(row.client_notified_at||Date.now());row.client_error='';row.client_skipped_at=undefined}
       if(x.client_skipped)row.client_skipped_at=Number(row.client_skipped_at||Date.now());
       await this.state.storage.put(key,row);return J({ok:true,defect:row});
     }
@@ -52,7 +62,7 @@ export class AppState extends AdminAccessAppState {
 export default {
   async fetch(req:Request,env:Env,ctx?:ExecutionContext):Promise<Response>{
     const u=new URL(req.url);
-    if(req.method==='GET'&&u.pathname==='/__hc_staff_version')return J({ok:true,build:BUILD,staff:true,no_dom_polling:true,parallel_media_preview:3,media_session_cache:true,defect_photos:true,client_defect_only:true});
+    if(req.method==='GET'&&u.pathname==='/__hc_staff_version')return J({ok:true,build:BUILD,staff:true,no_dom_polling:true,parallel_media_preview:3,media_session_cache:true,defect_photos:true,client_defect_only:true,client_defect_fetch:true,client_defect_retry:true});
     if(req.method==='GET'&&['/staff','/staff/','/admin'].includes(u.pathname))return html(STAFF_DEFECTS_PERFORMANCE_APP);
 
     if(req.method==='GET'&&u.pathname==='/api/staff/defects')return defectsApi(req,env,ctx);
@@ -62,14 +72,18 @@ export default {
 
     return adminAccess.fetch(req,env,ctx as any);
   },
-  async scheduled(controller:any,env:Env,ctx:ExecutionContext):Promise<void>{return adminAccess.scheduled(controller,env,ctx)}
+  async scheduled(controller:any,env:Env,ctx:ExecutionContext):Promise<void>{
+    const inherited=Promise.resolve(adminAccess.scheduled(controller,env,ctx));
+    const retry=retryPendingDefects(env).catch(e=>console.error('Defect retry sweep failed',e));
+    await Promise.allSettled([inherited,retry]);
+  }
 };
 
 async function defectsApi(req:Request,env:Env,ctx?:ExecutionContext){
   const auth=await authState(req,env,ctx);if(!auth.ok)return auth.response;
   const order=cleanOrder(new URL(req.url).searchParams.get('order_number'));if(!order)return J({ok:false,error:'Заказ не указан'},400);
   const x=await stateCall(env,`/opsdefects/list?order=${encodeURIComponent(order)}`).catch(()=>({defects:[]}));
-  return J({ok:true,defects:(x.defects||[]).map((d:any)=>({media_id:d.media_id,note:d.note,added_at:d.added_at,manager_notified_at:d.manager_notified_at||0,client_notified_at:d.client_notified_at||0}))});
+  return J({ok:true,defects:(x.defects||[]).map((d:any)=>({media_id:d.media_id,note:d.note,added_at:d.added_at,manager_notified_at:d.manager_notified_at||0,client_notified_at:d.client_notified_at||0,client_attempted_at:d.client_attempted_at||0,client_attempts:d.client_attempts||0,client_error:d.client_error||''}))});
 }
 
 async function defectUpload(req:Request,env:Env,ctx?:ExecutionContext){
@@ -101,11 +115,11 @@ async function adminJobWithDefects(req:Request,env:Env,ctx?:ExecutionContext){
 async function beforeWithDefects(req:Request,env:Env,ctx?:ExecutionContext){
   const copy=req.clone(),body:any=await readBody(copy),response=await adminAccess.fetch(req,env,ctx as any);if(!response.ok)return response;
   const data:any=await response.clone().json().catch(()=>({})),job=data.job||{},order=cleanOrder(job.booking_order_number||body.order_number);
-  if(order){const task=notifyDefects(env,order,job).catch(e=>console.error('Defect notification failed',e));if(ctx?.waitUntil)ctx.waitUntil(task);else await task}
+  if(order){const task=notifyDefects(env,order).catch(e=>console.error('Defect notification failed',e));if(ctx?.waitUntil)ctx.waitUntil(task);else await task}
   return response;
 }
 
-async function notifyDefects(env:Env,orderNumber:string,job:any){
+async function notifyDefects(env:Env,orderNumber:string){
   const list=await stateCall(env,`/opsdefects/list?order=${encodeURIComponent(orderNumber)}`).catch(()=>({defects:[]})),defects:DefectMeta[]=list.defects||[];
   if(!defects.length)return;
   const order=await bookingOrder(env,orderNumber),address=[order?.city,order?.address,order?.apartment?`кв./офис ${order.apartment}`:''].filter(Boolean).join(', '),admins=await notificationAdminIds(env);
@@ -115,16 +129,39 @@ async function notifyDefects(env:Env,orderNumber:string,job:any){
       const results=await Promise.allSettled(admins.map(id=>tgJson(env,'sendPhoto',{chat_id:id,photo:defect.file_id,caption,parse_mode:'HTML'})));
       if(results.some(r=>r.status==='fulfilled'))await stateCall(env,'/opsdefects/mark','POST',{order_number:orderNumber,media_id:defect.media_id,manager_notified:true});
     }
-    if(!defect.client_notified_at&&!defect.client_skipped_at){
-      try{
-        const media=await telegramFileBytes(env,defect.file_id);if(media.bytes.byteLength>MAX_CLIENT_DEFECT_BYTES)throw Error('Фото дефекта слишком большое');
-        const stub:any=bookingStub(env);if(!stub||typeof stub.notifyClientDefect!=='function')throw Error('Клиентский канал дефектов ещё не доступен');
-        const out:any=await stub.notifyClientDefect({order_number:orderNumber,defect_id:defect.media_id,note:defect.note,mime_type:media.mime,bytes:media.bytes});
-        if(out?.ok)await stateCall(env,'/opsdefects/mark','POST',{order_number:orderNumber,media_id:defect.media_id,client_notified:true});
-        else if(out?.skipped)await stateCall(env,'/opsdefects/mark','POST',{order_number:orderNumber,media_id:defect.media_id,client_skipped:true});
-        else throw Error(out?.error||'Не удалось отправить дефект клиенту');
-      }catch(e){console.error('Client defect notification failed',orderNumber,defect.media_id,e)}
-    }
+    if(!defect.client_notified_at)await deliverClientDefect(env,orderNumber,defect);
+  }
+}
+
+async function deliverClientDefect(env:Env,orderNumber:string,defect:DefectMeta){
+  try{
+    const media=await telegramFileBytes(env,defect.file_id);if(media.bytes.byteLength>MAX_CLIENT_DEFECT_BYTES)throw Error('Фото дефекта слишком большое');
+    const stub:any=bookingStub(env);if(!stub)throw Error('Клиентский канал дефектов недоступен');
+    const form=new FormData();
+    form.append('order_number',orderNumber);
+    form.append('defect_id',defect.media_id);
+    form.append('note',defect.note||'');
+    form.append('mime_type',media.mime);
+    form.append('photo',new Blob([media.bytes],{type:media.mime}),`defect-${defect.media_id}.${extensionForMime(media.mime)}`);
+    const response=await stub.fetch('https://booking.internal/staff/notify-defect',{method:'POST',body:form});
+    const out:any=await response.json().catch(()=>({ok:false,error:`Клиентский канал вернул ${response.status}`}));
+    await stateCall(env,'/opsdefects/mark','POST',{order_number:orderNumber,media_id:defect.media_id,client_attempted:true,client_error:out?.ok?'':out?.error||out?.reason||`HTTP ${response.status}`});
+    if(out?.ok){await stateCall(env,'/opsdefects/mark','POST',{order_number:orderNumber,media_id:defect.media_id,client_notified:true});return true}
+    throw Error(out?.error||out?.reason||'Не удалось отправить дефект клиенту');
+  }catch(e){
+    const message=clean((e as any)?.message||e,500)||'Не удалось отправить дефект клиенту';
+    console.error('Client defect notification failed',orderNumber,defect.media_id,message);
+    if(!defect.client_attempted_at)await stateCall(env,'/opsdefects/mark','POST',{order_number:orderNumber,media_id:defect.media_id,client_attempted:true,client_error:message}).catch(()=>null);
+    return false;
+  }
+}
+
+async function retryPendingDefects(env:Env){
+  const data=await stateCall(env,'/opsdefects/list-all').catch(()=>({defects:[]})),now=Date.now();
+  const pending:DefectMeta[]=(data.defects||[]).filter((d:DefectMeta)=>d&&!d.client_notified_at&&Number(d.client_attempts||0)<DEFECT_RETRY_LIMIT&&(now-Number(d.client_attempted_at||0)>=DEFECT_RETRY_DELAY_MS)).slice(0,8);
+  for(const defect of pending){
+    const order=cleanOrder(defect.order_number);if(!order)continue;
+    await deliverClientDefect(env,order,defect);
   }
 }
 
@@ -153,6 +190,7 @@ function cleanId(v:any){const s=String(v??'').trim();return/^[A-Za-z0-9._:-]{3,1
 function clean(v:any,n=500){return String(v??'').replace(/[\u0000-\u001f\u007f]/g,' ').trim().slice(0,n)}
 function positiveInt(v:any){const n=Number(v);return Number.isSafeInteger(n)&&n>0?n:0}
 function imageMime(v:any){const s=String(v||'').toLowerCase();return['image/jpeg','image/png','image/webp'].includes(s)?s:'image/jpeg'}
+function extensionForMime(mime:string){return mime==='image/png'?'png':mime==='image/webp'?'webp':'jpg'}
 function mimeFromPath(p:string){return p.toLowerCase().endsWith('.png')?'image/png':p.toLowerCase().endsWith('.webp')?'image/webp':'image/jpeg'}
 function esc(v:any){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]||c))}
 async function readBody(req:Request){try{return await req.json()}catch{return{}}}
