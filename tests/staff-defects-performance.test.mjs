@@ -10,7 +10,7 @@ test('defect/performance layer is active above administrator and safe operation 
   assert.match(index,/from '\.\/staff-defects-performance'/);
   assert.match(server,/from '\.\/staff-admin-access'/);
   assert.match(ui,/from '\.\/staff-admin-access-ui'/);
-  assert.ok(server.includes('staff-defects-performance-2026-09-16-a'));
+  assert.ok(server.includes('staff-defects-performance-2026-09-16-b'));
 });
 
 test('remaining one-second DOM pollers are stripped from assembled STAFF HTML',()=>{
@@ -43,15 +43,27 @@ test('manager report separates defects from ordinary before photos',()=>{
   assert.ok(server.includes('data.media.before=data.media.before.map'));
 });
 
-test('only defect media is routed to customer notification RPC',()=>{
-  assert.ok(server.includes('notifyClientDefect'));
+test('only defect media is routed to customer through internal fetch with actual photo bytes',()=>{
+  assert.ok(server.includes("stub.fetch('https://booking.internal/staff/notify-defect'"));
+  assert.ok(server.includes("form.append('photo',new Blob([media.bytes]"));
   assert.ok(server.includes('telegramFileBytes'));
   assert.ok(server.includes('client_notified_at'));
-  assert.ok(server.includes('client_skipped_at'));
-  assert.ok(!server.includes('notifyClientDefect({order_number:orderNumber,defect_id:defect.media_id,note:defect.note,mime_type:media.mime,bytes:media.bytes,ordinary'));
+  assert.ok(!server.includes('ordinary:true'));
 });
 
-test('defect notifications are idempotent for manager and customer',()=>{
+test('failed client delivery is retried by the minute cron including old skipped defects',()=>{
+  assert.ok(server.includes('/opsdefects/list-all'));
+  assert.ok(server.includes('retryPendingDefects'));
+  assert.ok(server.includes('DEFECT_RETRY_DELAY_MS'));
+  assert.ok(server.includes('DEFECT_RETRY_LIMIT'));
+  assert.ok(server.includes('client_attempted_at'));
+  assert.ok(server.includes('client_attempts'));
+  assert.ok(server.includes('client_error'));
+  assert.ok(server.includes('!d.client_notified_at'));
+  assert.ok(!server.includes('!d.client_notified_at&&!d.client_skipped_at'));
+});
+
+test('defect notifications remain idempotent for manager and customer',()=>{
   assert.ok(server.includes('manager_notified_at'));
   assert.ok(server.includes('client_notified_at'));
   assert.ok(server.includes("'/opsdefects/mark'"));
