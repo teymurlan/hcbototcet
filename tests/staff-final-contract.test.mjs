@@ -11,12 +11,14 @@ const runtimeServer = fs.readFileSync('src/staff-runtime.ts', 'utf8');
 const currentServer = fs.readFileSync('src/staff-current.ts', 'utf8');
 const operationsServer = fs.readFileSync('src/staff-operations.ts', 'utf8');
 const safeServer = fs.readFileSync('src/staff-operations-safe.ts', 'utf8');
+const accessServer = fs.readFileSync('src/staff-admin-access.ts', 'utf8');
 const index = fs.readFileSync('src/index.ts', 'utf8');
 const wrangler = fs.readFileSync('wrangler.jsonc', 'utf8');
 const baseUi = fs.readFileSync('src/staff-v3-ui.ts', 'utf8');
 
-test('stable STAFF safe operations entrypoint is active', () => {
-  assert.match(index, /from '\.\/staff-operations-safe'/);
+test('stable STAFF admin-access entrypoint is active', () => {
+  assert.match(index, /from '\.\/staff-admin-access'/);
+  assert.match(accessServer, /from '\.\/staff-operations-safe'/);
   assert.match(safeServer, /from '\.\/staff-operations'/);
   assert.match(operationsServer, /from '\.\/staff-current'/);
   assert.match(currentServer, /from '\.\/staff-runtime'/);
