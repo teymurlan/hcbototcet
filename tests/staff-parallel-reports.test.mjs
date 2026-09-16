@@ -4,11 +4,14 @@ import fs from 'node:fs';
 
 const server = fs.readFileSync('src/staff-operations.ts','utf8');
 const ui = fs.readFileSync('src/staff-operations-ui.ts','utf8');
+const safeServer = fs.readFileSync('src/staff-operations-safe.ts','utf8');
+const safeUi = fs.readFileSync('src/staff-operations-safe-ui.ts','utf8');
 const index = fs.readFileSync('src/index.ts','utf8');
 
-test('parallel operations layer is the active STAFF entrypoint',()=>{
-  assert.match(index,/from '\.\/staff-operations'/);
+test('parallel operations safety layer is the active STAFF entrypoint',()=>{
+  assert.match(index,/from '\.\/staff-operations-safe'/);
   assert.match(server,/staff-operations-parallel-reports-2026-09-16-a/);
+  assert.match(safeServer,/staff-operations-parallel-safe-2026-09-16-b/);
   assert.match(server,/from '\.\/staff-current'/);
 });
 
@@ -34,6 +37,13 @@ test('media upload is order-scoped, retry-safe and idempotent',()=>{
   assert.ok(ui.includes('opsUploadLocks'));
 });
 
+test('multipart upload never forces application/json and FIO starts blank',()=>{
+  assert.ok(safeUi.includes("window.fetch('/api/media/draft'"));
+  assert.ok(safeUi.includes("'X-App-Launch-Token'"));
+  assert.ok(!safeUi.includes("headers:{'content-type':'application/json'}"));
+  assert.ok(safeUi.includes("var u=s.user||{},name=''"));
+});
+
 test('every before/after action carries the selected order',()=>{
   assert.ok(ui.includes("body:JSON.stringify({order_number:n,defect_note:"));
   assert.ok(ui.includes("data-hc-stable=\"1\""));
@@ -46,6 +56,8 @@ test('admin and redo flows remain compatible with parallel reports',()=>{
   for(const token of ['/opsmulti/jobs-all','/opsmulti/job-by-id','/opsmulti/stage','history:',"clean(body.action,20)==='redo'",'archive:']) assert.ok(server.includes(token),token);
   assert.ok(server.includes('reportReviewOperations'));
   assert.ok(server.includes("stage:'before_sent'"));
+  assert.ok(safeServer.includes('accepted_report_stats:true'));
+  assert.ok(safeServer.includes("staff_review_status: accepted ? 'accepted'"));
 });
 
 test('legacy in-progress singleton report migrates without losing drafts',()=>{
