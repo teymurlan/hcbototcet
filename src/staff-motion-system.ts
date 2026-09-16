@@ -23,19 +23,19 @@ details>summary{cursor:pointer;-webkit-tap-highlight-color:transparent;transitio
 const APP_MOTION_SCRIPT = String.raw`
 <script>
 (function(){
-  var reduce=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches),navFrame=0,dirTimer=0,toastSeq=0;
+  var navFrame=0,dirTimer=0,toastSeq=0;
   function tg(){return window.Telegram&&window.Telegram.WebApp}
   function haptic(kind){try{var t=tg(),h=t&&t.HapticFeedback;if(!h)return;if(kind==='success'||kind==='warning'||kind==='error'){if(h.notificationOccurred)h.notificationOccurred(kind);return}if(h.impactOccurred)h.impactOccurred(kind||'light')}catch(e){}}
   function host(){var h=document.getElementById('hcToastHost');if(h)return h;h=document.createElement('div');h.id='hcToastHost';h.className='hc-toast-host';document.body.appendChild(h);return h}
   function kindOf(text){text=String(text||'').toLowerCase();if(/ошиб|не удалось|отмен|нельзя|нет доступа|не найден/.test(text))return'error';if(/вниман|проверь|сначала|дождитесь|нужно|точно/.test(text))return'warn';if(/сохран|готов|успеш|отправ|принят|обновл|заверш/.test(text))return'success';return'info'}
-  window.__hcToast=function(message,type){var text=String(message==null?'':message).trim();if(!text)return;var k=type||kindOf(text),h=host(),el=document.createElement('div');el.className='hc-toast '+(k==='warning'?'warn':k);el.setAttribute('role','status');el.setAttribute('aria-live','polite');el.dataset.toast=String(++toastSeq);var span=document.createElement('span');span.textContent=text;el.appendChild(span);h.appendChild(el);haptic(k==='warn'?'warning':k);requestAnimationFrame(function(){el.classList.add('on')});window.setTimeout(function(){el.classList.add('out');window.setTimeout(function(){el.remove()},230)},2600)};
+  window.__hcToast=function(message,type){var text=String(message==null?'':message).trim();if(!text)return;var k=type||kindOf(text),h=host(),el=document.createElement('div');el.className='hc-toast '+(k==='warning'?'warn':k);el.setAttribute('role','status');el.setAttribute('aria-live','polite');el.dataset.toast=String(++toastSeq);var span=document.createElement('span');span.textContent=text;el.appendChild(span);h.appendChild(el);haptic(k==='warn'?'warning':k==='info'?'light':k);requestAnimationFrame(function(){el.classList.add('on')});window.setTimeout(function(){el.classList.add('out');window.setTimeout(function(){el.remove()},230)},2600)};
   function indicator(){navFrame=0;var box=document.getElementById('navin');if(!box)return;var on=box.querySelector('button.on');if(!on)return;var ind=box.querySelector('.hc-nav-indicator');if(!ind){ind=document.createElement('div');ind.className='hc-nav-indicator';ind.setAttribute('aria-hidden','true');box.insertBefore(ind,box.firstChild)}ind.style.width=on.offsetWidth+'px';ind.style.transform='translate3d('+on.offsetLeft+'px,0,0)';ind.classList.add('on')}
   function queueIndicator(){if(navFrame)return;navFrame=requestAnimationFrame(indicator)}
   function markDirection(back){var main=document.getElementById('main');if(!main)return;main.classList.toggle('hc-direction-back',!!back);main.classList.toggle('hc-direction-forward',!back);if(dirTimer)clearTimeout(dirTimer);dirTimer=setTimeout(function(){main.classList.remove('hc-direction-back','hc-direction-forward')},420)}
-  function tactile(target){if(!target)return;var hit=target.closest&&target.closest('.btn,.filter,.rt-filterbar button,#nav button,.hc-std-arrow,.hc-standard-close,.rt-close,.hc-media,summary');if(!hit)return;haptic('light')}
+  function tactile(target){if(!target)return;var hit=target.closest&&target.closest('.btn,.filter,.rt-filterbar button,#nav button,.rt-close,.hc-media,summary');if(!hit)return;haptic('light')}
   document.addEventListener('pointerup',function(e){tactile(e.target)},{passive:true,capture:true});
   document.addEventListener('click',function(e){var b=e.target&&e.target.closest&&e.target.closest('.back');if(b)markDirection(true);else if(e.target&&e.target.closest&&e.target.closest('#nav button'))markDirection(false);queueIndicator()},true);
-  document.addEventListener('hc:after-render',function(){queueIndicator()},true);
+  document.addEventListener('hc:after-render',queueIndicator,true);
   window.addEventListener('pageshow',queueIndicator);
   window.addEventListener('resize',queueIndicator,{passive:true});
   queueIndicator();
