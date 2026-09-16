@@ -7,10 +7,12 @@ const ui = fs.readFileSync('src/staff-operations-ui.ts','utf8');
 const safeServer = fs.readFileSync('src/staff-operations-safe.ts','utf8');
 const safeUi = fs.readFileSync('src/staff-operations-safe-ui.ts','utf8');
 const accessServer = fs.readFileSync('src/staff-admin-access.ts','utf8');
+const defectsServer = fs.readFileSync('src/staff-defects-performance.ts','utf8');
 const index = fs.readFileSync('src/index.ts','utf8');
 
-test('parallel operations safety layer remains active under admin access',()=>{
-  assert.match(index,/from '\.\/staff-admin-access'/);
+test('parallel operations safety layer remains active under defect/performance and admin access',()=>{
+  assert.match(index,/from '\.\/staff-defects-performance'/);
+  assert.match(defectsServer,/from '\.\/staff-admin-access'/);
   assert.match(accessServer,/from '\.\/staff-operations-safe'/);
   assert.match(server,/staff-operations-parallel-reports-2026-09-16-a/);
   assert.match(safeServer,/staff-operations-parallel-safe-2026-09-16-b/);
