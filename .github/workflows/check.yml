@@ -15,4 +15,5 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
+      - run: node --test tests/staff-final-contract.test.mjs
       - run: npx wrangler deploy --dry-run --outdir /tmp/hc-worker-build
