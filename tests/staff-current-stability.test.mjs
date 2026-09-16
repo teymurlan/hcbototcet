@@ -5,10 +5,12 @@ import fs from 'node:fs';
 const server = fs.readFileSync('src/staff-current.ts','utf8');
 const ui = fs.readFileSync('src/staff-current-ui.ts','utf8');
 const operations = fs.readFileSync('src/staff-operations.ts','utf8');
+const safe = fs.readFileSync('src/staff-operations-safe.ts','utf8');
 const index = fs.readFileSync('src/index.ts','utf8');
 
-test('current stable STAFF layer remains under the active operations runtime',()=>{
-  assert.match(index,/from '\.\/staff-operations'/);
+test('current stable STAFF layer remains under the active safe operations runtime',()=>{
+  assert.match(index,/from '\.\/staff-operations-safe'/);
+  assert.match(safe,/from '\.\/staff-operations'/);
   assert.match(operations,/from '\.\/staff-current'/);
   assert.match(server,/staff-current-stability-2026-09-16-a/);
 });
