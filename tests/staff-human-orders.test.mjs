@@ -6,10 +6,12 @@ const server=fs.readFileSync('src/staff-human-orders.ts','utf8');
 const ui=fs.readFileSync('src/staff-human-orders-ui.ts','utf8');
 const motion=fs.readFileSync('src/staff-motion-system.ts','utf8');
 const index=fs.readFileSync('src/index.ts','utf8');
+const clients=fs.readFileSync('src/staff-clients.ts','utf8');
 const injected=ui.slice(ui.indexOf('const ORDER_UI_SCRIPT'),ui.indexOf('const STABLE_BASE_APP'));
 
-test('human order layer is active above Mira style without changing technical IDs',()=>{
-  assert.match(index,/from '\.\/staff-human-orders'/);
+test('human order layer remains active above Mira style without changing technical IDs',()=>{
+  assert.match(index,/from '\.\/staff-clients'/);
+  assert.match(clients,/from '\.\/staff-human-orders'/);
   assert.match(server,/from '\.\/staff-mira-style'/);
   assert.match(ui,/from '\.\/staff-mira-style-ui'/);
   assert.ok(server.includes('human_order_numbers:true'));
