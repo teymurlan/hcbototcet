@@ -41,12 +41,12 @@ export class AppState extends ClientsAppState {
     }
     if(u.pathname==='/opsnotify/templates'&&req.method==='GET'){
       const stored=await this.state.storage.get<Partial<NotifyTemplates>>(TEMPLATES_KEY)||{};
-      return J({ok:true,templates:{...defaultTemplates(),...sanitizeTemplates(stored)},placeholders:templatePlaceholders()});
+      return J({ok:true,templates:{...defaultTemplates(),...sanitizeTemplates(stored)},defaults:defaultTemplates(),placeholders:templatePlaceholders()});
     }
     if(u.pathname==='/opsnotify/templates'&&req.method==='POST'){
       const x:any=await readBody(req),next=sanitizeTemplates(x?.templates||x);
       await this.state.storage.put(TEMPLATES_KEY,next);
-      return J({ok:true,templates:{...defaultTemplates(),...next},placeholders:templatePlaceholders()});
+      return J({ok:true,templates:{...defaultTemplates(),...next},defaults:defaultTemplates(),placeholders:templatePlaceholders()});
     }
     if(u.pathname==='/opsui/dashboard'&&req.method==='GET'){
       const stored=await this.state.storage.get<Partial<DashboardPreferences>>(DASHBOARD_KEY)||{};
