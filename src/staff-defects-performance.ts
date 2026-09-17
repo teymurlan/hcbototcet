@@ -122,11 +122,12 @@ async function beforeWithDefects(req:Request,env:Env,ctx?:ExecutionContext){
 async function notifyDefects(env:Env,orderNumber:string){
   const list=await stateCall(env,`/opsdefects/list?order=${encodeURIComponent(orderNumber)}`).catch(()=>({defects:[]})),defects:DefectMeta[]=list.defects||[];
   if(!defects.length)return;
-  const order=await bookingOrder(env,orderNumber),address=[order?.city,order?.address,order?.apartment?`кв./офис ${order.apartment}`:''].filter(Boolean).join(', '),admins=await notificationAdminIds(env);
+  const order=await bookingOrder(env,orderNumber),address=[order?.city,order?.address,order?.apartment?`кв./офис ${order.apartment}`:''].filter(Boolean).join(', '),admins=await notificationAdminIds(env),orderLabel=await displayOrderLabel(env,order||{order_number:orderNumber}),templates=await stateCall(env,'/opsnotify/templates').catch(()=>({templates:{}})),template=cleanTemplate(templates?.templates?.defects)||'⚠️ Дефект до уборки · {order}\n\n📍 {address}\nКомментарий: {comment}';
+  const short=orderLabel?`Заказ #${String(orderLabel).padStart(2,'0')}`:orderNumber;
   for(const defect of defects){
     if(!defect.manager_notified_at){
-      const caption=[`⚠️ <b>ДЕФЕКТ ДО УБОРКИ</b>`,`Заказ: <b>${esc(orderNumber)}</b>`,address?`Адрес: ${esc(address)}`:'',`Комментарий: ${esc(defect.note)}`].filter(Boolean).join('\n');
-      const results=await Promise.allSettled(admins.map(id=>tgJson(env,'sendPhoto',{chat_id:id,photo:defect.file_id,caption,parse_mode:'HTML'})));
+      const caption=renderDefectTemplate(template,{order:short,address:address||'Адрес не указан',comment:defect.note||'Без комментария'});
+      const results=await Promise.allSettled(admins.map(id=>tgJson(env,'sendPhoto',{chat_id:id,photo:defect.file_id,caption})));
       if(results.some(r=>r.status==='fulfilled'))await stateCall(env,'/opsdefects/mark','POST',{order_number:orderNumber,media_id:defect.media_id,manager_notified:true});
     }
     if(!defect.client_notified_at)await deliverClientDefect(env,orderNumber,defect);
@@ -175,6 +176,9 @@ async function notificationAdminIds(env:Env){
   const raw=[(env as any).ADMIN_IDS,(env as any).ADMIN_TELEGRAM_IDS,(env as any).ADMIN_TELEGRAM_ID,(env as any).ADMIN_ID].filter(Boolean).join(','),ids=String(raw).split(/[;,\s]+/).map(positiveInt).filter(Boolean);
   const delegated=await stateCall(env,'/opsadmin/admins').catch(()=>({admins:[]}));for(const a of delegated.admins||[]){const id=positiveInt(a.id);if(id)ids.push(id)}return[...new Set(ids)];
 }
+async function displayOrderLabel(env:Env,order:any){const n=clean(order?.order_number,120);if(!n)return 0;const x=await stateCall(env,'/opshuman/ensure','POST',{orders:[{order_number:n,created_at:order?.created_at,createdAt:order?.createdAt,date:order?.date,time:order?.time}]}).catch(()=>({labels:{}}));return Number(x?.labels?.[n]||0)}
+function cleanTemplate(v:any){return String(v??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim().slice(0,1000)}
+function renderDefectTemplate(template:string,values:Record<string,any>){let out=cleanTemplate(template);for(const [k,v] of Object.entries(values||{}))out=out.split(`{${k}}`).join(clean(v,500));return out.replace(/\n{3,}/g,'\n\n').trim().slice(0,1000)}
 async function bookingOrder(env:Env,n:string){const r=await bookingStub(env)?.fetch('https://booking.internal/orders');if(!r?.ok)return null;const x:any=await r.json().catch(()=>({}));return(x.orders||[]).find((o:any)=>String(o.order_number||'')===n)||null}
 function bookingStub(env:Env){return (env as any).BOOKING_STORE?.get((env as any).BOOKING_STORE.idFromName(STORE_NAME))}
 
