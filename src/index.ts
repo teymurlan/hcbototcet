@@ -1,6 +1,7 @@
 import staff from './staff-clients';
 import type { Env } from './staff-clients';
 import type { Env as HumanOrdersEnv } from './staff-human-orders';
+import { applyStaffCatalogDesign, STAFF_CATALOG_DESIGN_BUILD } from './staff-catalog-design';
 
 export { AppState } from './staff-clients';
 export type { Env } from './staff-clients';
@@ -84,13 +85,17 @@ export default {
     if (req.method === 'GET' && url.pathname === '/__hc_clients_health') {
       return clientHealth(env);
     }
+    if (req.method === 'GET' && url.pathname === '/__hc_staff_catalog_design') {
+      return healthJson({ ok: true, build: STAFF_CATALOG_DESIGN_BUILD, onboarding: true, catalog_ui: true, role_based: true, business_logic_unchanged: true });
+    }
 
     const origin = url.origin;
     const response = await staff.fetch(req, { ...env, WEBAPP_URL: origin }, ctx);
     if (req.method === 'GET' && ['/staff', '/staff/', '/admin'].includes(url.pathname) && response.ok) {
       const headers = new Headers(response.headers);
       headers.set('cache-control', 'no-store, no-cache, must-revalidate');
-      const body = (await response.text()).replace('</body>', CLIENT_ENTRY_FIX + '</body>');
+      const withClientFix = (await response.text()).replace('</body>', CLIENT_ENTRY_FIX + '</body>');
+      const body = applyStaffCatalogDesign(withClientFix);
       return new Response(body, { status: response.status, headers });
     }
     return response;
