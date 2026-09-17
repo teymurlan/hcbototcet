@@ -1,5 +1,6 @@
 import staff from './staff-control-center';
 import type { Env } from './staff-control-center';
+import type { Env as ClientsEnv } from './staff-clients';
 import type { Env as HumanOrdersEnv } from './staff-human-orders';
 import { applyStaffCatalogDesign, STAFF_CATALOG_DESIGN_BUILD } from './staff-catalog-design';
 import { applyStaffCatalogCabinets, STAFF_CATALOG_CABINETS_BUILD } from './staff-catalog-cabinets';
@@ -8,6 +9,7 @@ import { applyStaffCommandV3, STAFF_COMMAND_V3_BUILD } from './staff-command-v3'
 export { AppState } from './staff-control-center';
 export type { Env } from './staff-control-center';
 
+type _ClientsChainContract = ClientsEnv;
 type _HumanOrdersChainContract = HumanOrdersEnv;
 
 const CLIENT_ENTRY_FIX = String.raw`<script>
