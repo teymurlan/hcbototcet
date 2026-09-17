@@ -18,7 +18,7 @@ type NotifySettings={
   defects:boolean;
   finance_changes:boolean;
 };
-type TemplateKey='new_order'|'order_changed'|'order_cancelled'|'finance_changes'|'broadcast';
+type TemplateKey='new_order'|'order_changed'|'order_cancelled'|'defects'|'finance_changes'|'broadcast';
 type NotifyTemplates=Record<TemplateKey,string>;
 type DashboardStyle='balanced'|'compact'|'focus';
 type DashboardPreferences={style:DashboardStyle;updated_at:number};
@@ -303,10 +303,11 @@ function defaultTemplates():NotifyTemplates{return{
   new_order:'🔔 Новая заявка · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
   order_changed:'🔄 Заказ изменён · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
   order_cancelled:'❌ Заказ отменён · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
+  defects:'⚠️ Дефект до уборки · {order}\n\n📍 {address}\nКомментарий: {comment}',
   finance_changes:'💳 Изменены реквизиты сотрудника\n\nСотрудник: {employee}\nОткройте STAFF для проверки.',
   broadcast:'📣 {title}\n\n{body}\n\n{brand}',
 }}
-function templatePlaceholders(){return{new_order:['order','date','time','address','service','area','body'],order_changed:['order','date','time','address','service','area','body'],order_cancelled:['order','date','time','address','service','area','body'],finance_changes:['employee'],broadcast:['title','body','brand']}}
+function templatePlaceholders(){return{new_order:['order','date','time','address','service','area','body'],order_changed:['order','date','time','address','service','area','body'],order_cancelled:['order','date','time','address','service','area','body'],defects:['order','address','comment'],finance_changes:['employee'],broadcast:['title','body','brand']}}
 function sanitizeTemplates(v:any):Partial<NotifyTemplates>{const out:Partial<NotifyTemplates>={};for(const k of Object.keys(defaultTemplates()) as TemplateKey[]){if(v?.[k]!==undefined){const s=String(v[k]??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim().slice(0,1800);if(s)out[k]=s}}return out}
 function renderTemplate(template:string,values:Record<string,any>){let out=esc(template);for(const [k,v] of Object.entries(values||{})){const safe=esc(v??'');out=out.split(`{${k}}`).join(safe)}return out.replace(/\s+·\s*$/gm,'').replace(/\n{3,}/g,'\n\n').trim()}
 function sanitizeSettings(v:any):NotifySettings{const d=defaultSettings();return{new_order:v?.new_order!==undefined?!!v.new_order:d.new_order,order_changed:v?.order_changed!==undefined?!!v.order_changed:d.order_changed,order_cancelled:v?.order_cancelled!==undefined?!!v.order_cancelled:d.order_cancelled,defects:v?.defects!==undefined?!!v.defects:d.defects,finance_changes:v?.finance_changes!==undefined?!!v.finance_changes:d.finance_changes}}
