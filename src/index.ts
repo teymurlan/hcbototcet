@@ -5,6 +5,7 @@ import type { Env as HumanOrdersEnv } from './staff-human-orders';
 import { applyStaffCatalogDesign, STAFF_CATALOG_DESIGN_BUILD } from './staff-catalog-design';
 import { applyStaffCatalogCabinets, STAFF_CATALOG_CABINETS_BUILD } from './staff-catalog-cabinets';
 import { applyStaffCommandV3, STAFF_COMMAND_V3_BUILD } from './staff-command-v3';
+import { applyStaffCommandV4, STAFF_COMMAND_V4_BUILD } from './staff-command-v4';
 
 export { AppState } from './staff-control-center';
 export type { Env } from './staff-control-center';
@@ -52,6 +53,7 @@ export default {
         build: STAFF_CATALOG_DESIGN_BUILD,
         cabinets_build: STAFF_CATALOG_CABINETS_BUILD,
         command_build: STAFF_COMMAND_V3_BUILD,
+        command_v4_build: STAFF_COMMAND_V4_BUILD,
         onboarding: true,
         catalog_ui: true,
         catalog_cabinets_v2: true,
@@ -62,6 +64,10 @@ export default {
         ios_glass_nav_v3: true,
         notification_control_center: true,
         owner_broadcasts: true,
+        command_center_v4: true,
+        editable_notification_templates: true,
+        working_photo_center_v4: true,
+        persistent_view_state_v4: true,
         role_based: true,
         business_logic_unchanged: true,
       });
@@ -75,7 +81,8 @@ export default {
       const withClientFix = (await response.text()).replace('</body>', CLIENT_ENTRY_FIX + '</body>');
       const catalog = applyStaffCatalogDesign(withClientFix);
       const cabinets = applyStaffCatalogCabinets(catalog);
-      const body = applyStaffCommandV3(cabinets);
+      const command = applyStaffCommandV3(cabinets);
+      const body = applyStaffCommandV4(command);
       return new Response(body, { status: response.status, headers });
     }
     return response;
