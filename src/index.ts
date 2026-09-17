@@ -1,6 +1,7 @@
 import staff from './staff-clients';
 import type { Env } from './staff-clients';
 import type { Env as HumanOrdersEnv } from './staff-human-orders';
+import { maybeRunLegacySeed } from './staff-legacy-seed-once';
 
 export { AppState } from './staff-clients';
 export type { Env } from './staff-clients';
@@ -10,7 +11,9 @@ export type { Env } from './staff-clients';
 type _HumanOrdersChainContract = HumanOrdersEnv;
 
 export default {
-  fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+    const seed=await maybeRunLegacySeed(req,env);
+    if(seed)return seed;
     const origin = new URL(req.url).origin;
     return staff.fetch(req, { ...env, WEBAPP_URL: origin }, ctx);
   },
