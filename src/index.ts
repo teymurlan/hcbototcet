@@ -6,6 +6,7 @@ import { applyStaffCatalogDesign, STAFF_CATALOG_DESIGN_BUILD } from './staff-cat
 import { applyStaffCatalogCabinets, STAFF_CATALOG_CABINETS_BUILD } from './staff-catalog-cabinets';
 import { applyStaffCommandV3, STAFF_COMMAND_V3_BUILD } from './staff-command-v3';
 import { applyStaffCommandV4, STAFF_COMMAND_V4_BUILD } from './staff-command-v4';
+import { applyStaffCommandV5, STAFF_COMMAND_V5_BUILD } from './staff-command-v5';
 
 export { AppState } from './staff-control-center';
 export type { Env } from './staff-control-center';
@@ -54,6 +55,7 @@ export default {
         cabinets_build: STAFF_CATALOG_CABINETS_BUILD,
         command_build: STAFF_COMMAND_V3_BUILD,
         command_v4_build: STAFF_COMMAND_V4_BUILD,
+        command_v5_build: STAFF_COMMAND_V5_BUILD,
         onboarding: true,
         catalog_ui: true,
         catalog_cabinets_v2: true,
@@ -68,6 +70,9 @@ export default {
         editable_notification_templates: true,
         working_photo_center_v4: true,
         persistent_view_state_v4: true,
+        dashboard_style_picker_v5: true,
+        notification_center_v5: true,
+        stable_orders_live_refresh_v5: true,
         role_based: true,
         business_logic_unchanged: true,
       });
@@ -82,7 +87,8 @@ export default {
       const catalog = applyStaffCatalogDesign(withClientFix);
       const cabinets = applyStaffCatalogCabinets(catalog);
       const command = applyStaffCommandV3(cabinets);
-      const body = applyStaffCommandV4(command);
+      const commandV4 = applyStaffCommandV4(command);
+      const body = applyStaffCommandV5(commandV4);
       return new Response(body, { status: response.status, headers });
     }
     return response;

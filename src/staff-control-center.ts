@@ -3,9 +3,10 @@ import type { Env } from './staff-clients';
 
 export type { Env } from './staff-clients';
 
-const BUILD='staff-control-center-2026-09-17-c';
+const BUILD='staff-control-center-2026-09-18-d';
 const SETTINGS_KEY='opsnotify:settings';
 const TEMPLATES_KEY='opsnotify:templates';
+const DASHBOARD_KEY='opsui:dashboard';
 const BROADCAST_PREFIX='opsnotify:broadcast:';
 const MAX_HISTORY=80;
 const STORE_NAME='house-cleaning-app-v1';
@@ -17,8 +18,10 @@ type NotifySettings={
   defects:boolean;
   finance_changes:boolean;
 };
-type TemplateKey='new_order'|'order_changed'|'order_cancelled'|'finance_changes'|'broadcast';
+type TemplateKey='new_order'|'order_changed'|'order_cancelled'|'defects'|'finance_changes'|'broadcast';
 type NotifyTemplates=Record<TemplateKey,string>;
+type DashboardStyle='balanced'|'compact'|'focus';
+type DashboardPreferences={style:DashboardStyle;updated_at:number};
 type BroadcastRecord={
   id:string;at:number;created_at:string;created_by:number;audience:string;title:string;body:string;
   requested:number;sent:number;failed:number;employee_ids:number[];
@@ -38,12 +41,21 @@ export class AppState extends ClientsAppState {
     }
     if(u.pathname==='/opsnotify/templates'&&req.method==='GET'){
       const stored=await this.state.storage.get<Partial<NotifyTemplates>>(TEMPLATES_KEY)||{};
-      return J({ok:true,templates:{...defaultTemplates(),...sanitizeTemplates(stored)},placeholders:templatePlaceholders()});
+      return J({ok:true,templates:{...defaultTemplates(),...sanitizeTemplates(stored)},defaults:defaultTemplates(),placeholders:templatePlaceholders()});
     }
     if(u.pathname==='/opsnotify/templates'&&req.method==='POST'){
       const x:any=await readBody(req),next=sanitizeTemplates(x?.templates||x);
       await this.state.storage.put(TEMPLATES_KEY,next);
-      return J({ok:true,templates:{...defaultTemplates(),...next},placeholders:templatePlaceholders()});
+      return J({ok:true,templates:{...defaultTemplates(),...next},defaults:defaultTemplates(),placeholders:templatePlaceholders()});
+    }
+    if(u.pathname==='/opsui/dashboard'&&req.method==='GET'){
+      const stored=await this.state.storage.get<Partial<DashboardPreferences>>(DASHBOARD_KEY)||{};
+      return J({ok:true,preferences:sanitizeDashboard(stored)});
+    }
+    if(u.pathname==='/opsui/dashboard'&&req.method==='POST'){
+      const x:any=await readBody(req),preferences=sanitizeDashboard(x?.preferences||x);
+      await this.state.storage.put(DASHBOARD_KEY,preferences);
+      return J({ok:true,preferences});
     }
     if(u.pathname==='/opsnotify/broadcast-history'&&req.method==='GET'){
       const rows=await this.state.storage.list<BroadcastRecord>({prefix:BROADCAST_PREFIX});
@@ -74,7 +86,7 @@ export default {
     const u=new URL(req.url);
     if(req.method==='GET'&&u.pathname==='/__hc_staff_version'){
       const base=await clients.fetch(req,env,ctx as any).catch(()=>null);let info:any={};try{if(base)info=await base.json()}catch{}
-      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,editable_notification_templates:true,automatic_manager_notification_settings:true,logic_unchanged:true});
+      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,editable_notification_templates:true,notification_template_test:true,dashboard_style_picker:true,automatic_manager_notification_settings:true,logic_unchanged:true});
     }
     if(u.pathname==='/api/staff/notification-settings'){
       const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
@@ -93,6 +105,19 @@ export default {
         return proxy(await stateRaw(env,'/opsnotify/templates','POST',{templates:next}));
       }
       return J({ok:false,error:'Method not allowed'},405);
+    }
+    if(u.pathname==='/api/staff/dashboard-preferences'){
+      const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
+      if(req.method==='GET')return proxy(await stateRaw(env,'/opsui/dashboard'));
+      if(req.method==='POST'){
+        const body:any=await readBody(req),preferences=sanitizeDashboard(body?.preferences||body);
+        return proxy(await stateRaw(env,'/opsui/dashboard','POST',{preferences}));
+      }
+      return J({ok:false,error:'Method not allowed'},405);
+    }
+    if(u.pathname==='/api/staff/notification-template-test'&&req.method==='POST'){
+      const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
+      return sendTemplateTest(req,env,auth.userId);
     }
     if(u.pathname==='/api/staff/notification-broadcasts'&&req.method==='GET'){
       const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
@@ -163,6 +188,16 @@ async function sendBroadcast(req:Request,env:Env,userId:number,ctx?:ExecutionCon
   await stateCall(env,'/opsnotify/broadcast-log','POST',log);
   await stateCall(env,'/opsfinal/notice','POST',{audience:'admin',level:failed?'warning':'success',title:'Рассылка отправлена',body:`${title} · доставлено ${sent} из ${ids.length}`,at});
   return J({ok:true,requested:ids.length,sent,failed});
+}
+
+async function sendTemplateTest(req:Request,env:Env,userId:number){
+  const x:any=await readBody(req),key=clean(x?.key,40) as TemplateKey;
+  if(!Object.prototype.hasOwnProperty.call(defaultTemplates(),key))return J({ok:false,error:'Неизвестный шаблон'},400);
+  const ids=await adminIds(env),target=userId||ids[0];if(!target)return J({ok:false,error:'Не найден Telegram руководителя'},400);
+  const templates=await getTemplates(env),values:any={order:'Заказ #30',date:'18.09.2026',time:'14:30',address:'Санкт-Петербург, Невский проспект, 10',service:'Генеральная уборка',area:'65 м²',employee:'Тестовый сотрудник',title:'Тестовая рассылка',body:'Так будет выглядеть ваше сообщение.',brand:'HOUSE CLEANING STAFF'};
+  const text=renderTemplate(templates[key]||defaultTemplates()[key],values);
+  await sendTg(env,target,text,new URL(req.url).origin);
+  return J({ok:true});
 }
 
 async function deliverEnabledScheduledNotices(env:Env,started:number){
@@ -268,13 +303,15 @@ function defaultTemplates():NotifyTemplates{return{
   new_order:'🔔 Новая заявка · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
   order_changed:'🔄 Заказ изменён · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
   order_cancelled:'❌ Заказ отменён · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
+  defects:'⚠️ Дефект до уборки · {order}\n\n📍 {address}\nКомментарий: {comment}',
   finance_changes:'💳 Изменены реквизиты сотрудника\n\nСотрудник: {employee}\nОткройте STAFF для проверки.',
   broadcast:'📣 {title}\n\n{body}\n\n{brand}',
 }}
-function templatePlaceholders(){return{new_order:['order','date','time','address','service','area','body'],order_changed:['order','date','time','address','service','area','body'],order_cancelled:['order','date','time','address','service','area','body'],finance_changes:['employee'],broadcast:['title','body','brand']}}
+function templatePlaceholders(){return{new_order:['order','date','time','address','service','area','body'],order_changed:['order','date','time','address','service','area','body'],order_cancelled:['order','date','time','address','service','area','body'],defects:['order','address','comment'],finance_changes:['employee'],broadcast:['title','body','brand']}}
 function sanitizeTemplates(v:any):Partial<NotifyTemplates>{const out:Partial<NotifyTemplates>={};for(const k of Object.keys(defaultTemplates()) as TemplateKey[]){if(v?.[k]!==undefined){const s=String(v[k]??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim().slice(0,1800);if(s)out[k]=s}}return out}
 function renderTemplate(template:string,values:Record<string,any>){let out=esc(template);for(const [k,v] of Object.entries(values||{})){const safe=esc(v??'');out=out.split(`{${k}}`).join(safe)}return out.replace(/\s+·\s*$/gm,'').replace(/\n{3,}/g,'\n\n').trim()}
 function sanitizeSettings(v:any):NotifySettings{const d=defaultSettings();return{new_order:v?.new_order!==undefined?!!v.new_order:d.new_order,order_changed:v?.order_changed!==undefined?!!v.order_changed:d.order_changed,order_cancelled:v?.order_cancelled!==undefined?!!v.order_cancelled:d.order_cancelled,defects:v?.defects!==undefined?!!v.defects:d.defects,finance_changes:v?.finance_changes!==undefined?!!v.finance_changes:d.finance_changes}}
+function sanitizeDashboard(v:any):DashboardPreferences{const style:DashboardStyle=['balanced','compact','focus'].includes(String(v?.style))?v.style:'balanced';return{style,updated_at:Number(v?.updated_at||Date.now())}}
 async function stateCall(env:Env,path:string,method='GET',body?:any){const r=await stateRaw(env,path,method,body);return await r.json().catch(()=>({}))}
 async function stateRaw(env:Env,path:string,method='GET',body?:any){const id=(env as any).STATE.idFromName('global'),stub=(env as any).STATE.get(id);return stub.fetch('https://state.local'+path,{method,headers:body===undefined?undefined:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)})}
 async function proxy(r:Response){const x=await r.text();return new Response(x,{status:r.status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}})}
