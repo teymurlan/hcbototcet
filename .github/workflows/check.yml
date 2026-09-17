@@ -15,5 +15,5 @@ jobs:
         with:
           node-version: '22'
       - run: npm install
-      - run: node --test tests/staff-final-contract.test.mjs tests/staff-runtime-operations.test.mjs tests/staff-current-stability.test.mjs tests/staff-parallel-reports.test.mjs tests/staff-operations-safe.test.mjs tests/staff-admin-access.test.mjs tests/staff-defects-performance.test.mjs tests/staff-mira-style.test.mjs tests/staff-human-orders.test.mjs tests/staff-clients.test.mjs tests/staff-catalog-design.test.mjs
+      - run: node --test tests/staff-final-contract.test.mjs tests/staff-runtime-operations.test.mjs tests/staff-current-stability.test.mjs tests/staff-parallel-reports.test.mjs tests/staff-operations-safe.test.mjs tests/staff-admin-access.test.mjs tests/staff-defects-performance.test.mjs tests/staff-mira-style.test.mjs tests/staff-human-orders.test.mjs tests/staff-clients.test.mjs tests/staff-catalog-design.test.mjs tests/staff-catalog-cabinets.test.mjs
       - run: npx wrangler deploy --dry-run --outdir /tmp/hc-worker-build
