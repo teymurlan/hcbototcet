@@ -61,10 +61,12 @@ test('automatic order Telegram message uses the short display number and Russian
   for(const token of ['/opshuman/ensure','Заказ #','padStart(2','dmy(order.date)','Новая заявка','Заказ изменён','Заказ отменён']) assert.ok(control.includes(token),token);
 });
 
-test('critical employee notifications are not controlled by manager switches',()=>{
+test('critical employee and customer defect delivery remains independent from manager switches',()=>{
   assert.ok(ui.includes('Критические сообщения сотрудникам'));
-  assert.ok(control.includes('Defect delivery to the customer must remain untouched'));
-  assert.ok(control.includes('Only the manager copy can'));
+  assert.ok(control.includes("u.pathname==='/api/before'"));
+  assert.ok(control.includes("!await managerNotificationEnabled(env,'defects')"));
+  assert.ok(control.includes('suppressManagerRecipients(env,true)'));
+  assert.ok(control.includes('Defect delivery can contain a photo'));
 });
 
 test('new interface layer is event driven with no DOM polling',()=>{
