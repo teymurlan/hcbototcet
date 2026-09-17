@@ -5,6 +5,7 @@ import fs from 'node:fs';
 const ui=fs.readFileSync('src/staff-command-v5.ts','utf8');
 const control=fs.readFileSync('src/staff-control-center.ts','utf8');
 const finalUi=fs.readFileSync('src/staff-final-ui.ts','utf8');
+const defects=fs.readFileSync('src/staff-defects-performance.ts','utf8');
 const index=fs.readFileSync('src/index.ts','utf8');
 
 test('command center v5 is layered after v4',()=>{
@@ -26,8 +27,9 @@ test('notification center v5 separates feed channels texts and broadcast',()=>{
 });
 
 test('notification text editor has variables live preview reset save and Telegram test',()=>{
-  for(const token of ['data-v5-var','data-v5-preview','data-v5-reset','data-v5-save','data-v5-test','Тест отправлен вам в Telegram','/api/staff/notification-template-test']) assert.ok(ui.includes(token),token);
-  for(const token of ['notification_template_test:true','sendTemplateTest','Неизвестный шаблон','defaults:defaultTemplates()']) assert.ok(control.includes(token),token);
+  for(const token of ['data-v5-var','data-v5-preview','data-v5-reset','data-v5-save','data-v5-test','Тест отправлен вам в Telegram','/api/staff/notification-template-test','Дефект до уборки']) assert.ok(ui.includes(token),token);
+  for(const token of ['notification_template_test:true','sendTemplateTest','Неизвестный шаблон','defaults:defaultTemplates()','defects:[\'order\',\'address\',\'comment\']']) assert.ok(control.includes(token),token);
+  for(const token of ['/opsnotify/templates','templates?.templates?.defects','renderDefectTemplate','sendPhoto']) assert.ok(defects.includes(token),token);
 });
 
 test('broadcast remains available with recipient selection and history',()=>{
