@@ -3,10 +3,11 @@ import type { Env } from './staff-clients';
 
 export type { Env } from './staff-clients';
 
-const BUILD='staff-control-center-2026-09-17-a';
+const BUILD='staff-control-center-2026-09-17-b';
 const SETTINGS_KEY='opsnotify:settings';
 const BROADCAST_PREFIX='opsnotify:broadcast:';
 const MAX_HISTORY=80;
+const STORE_NAME='house-cleaning-app-v1';
 
 type NotifySettings={
   new_order:boolean;
@@ -62,7 +63,7 @@ export default {
     const u=new URL(req.url);
     if(req.method==='GET'&&u.pathname==='/__hc_staff_version'){
       const base=await clients.fetch(req,env,ctx as any).catch(()=>null);let info:any={};try{if(base)info=await base.json()}catch{}
-      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,logic_unchanged:true});
+      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,automatic_manager_notification_settings:true,logic_unchanged:true});
     }
     if(u.pathname==='/api/staff/notification-settings'){
       const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
@@ -81,9 +82,40 @@ export default {
       const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
       return sendBroadcast(req,env,auth.userId,ctx);
     }
+
+    // Finance-detail alerts are manager-facing. Keep the normal employee update flow,
+    // but suppress only the manager Telegram recipient when the owner disabled it.
+    if(u.pathname==='/api/staff/payment-details'&&req.method==='POST'){
+      const auth=await requestAuth(req,env,ctx);
+      if(auth.ok&&!auth.admin&&!await managerNotificationEnabled(env,'finance_changes')){
+        return clients.fetch(req,suppressManagerRecipients(env,false),ctx as any);
+      }
+    }
+
+    // Defect delivery to the customer must remain untouched. Only the manager copy can
+    // be disabled, including delegated admins stored in STATE.
+    if(u.pathname==='/api/before'&&req.method==='POST'&&!await managerNotificationEnabled(env,'defects')){
+      return clients.fetch(req,suppressManagerRecipients(env,true),ctx as any);
+    }
+
     return clients.fetch(req,env,ctx as any);
   },
-  async scheduled(controller:any,env:Env,ctx:ExecutionContext):Promise<void>{return clients.scheduled(controller,env,ctx)}
+
+  async scheduled(controller:any,env:Env,ctx:ExecutionContext):Promise<void>{
+    const started=Date.now(),waits:Promise<any>[]=[];
+    const wrappedCtx:any={
+      waitUntil(p:any){const q=Promise.resolve(p);waits.push(q);ctx.waitUntil(q)},
+      passThroughOnException(){try{(ctx as any).passThroughOnException?.()}catch{}},
+      props:(ctx as any).props,
+    };
+
+    // Existing scheduled logic still creates its durable audit notices, while its
+    // direct manager Telegram fan-out is muted here. After all scheduled promises
+    // settle, we deliver only the event classes enabled in the owner's settings.
+    await clients.scheduled(controller,suppressManagerRecipients(env,false),wrappedCtx);
+    if(waits.length)await Promise.allSettled(waits);
+    await deliverEnabledScheduledNotices(env,started).catch(e=>console.error('Manager notification delivery failed',e));
+  }
 };
 
 async function sendBroadcast(req:Request,env:Env,userId:number,ctx?:ExecutionContext){
@@ -114,6 +146,51 @@ async function sendBroadcast(req:Request,env:Env,userId:number,ctx?:ExecutionCon
   return J({ok:true,requested:ids.length,sent,failed});
 }
 
+async function deliverEnabledScheduledNotices(env:Env,started:number){
+  const data=await stateCall(env,'/opsfinal/notices').catch(()=>({notices:[]})),rows:any[]=Array.isArray(data.notices)?data.notices:[];
+  const recent=rows.filter(n=>Number(n?.at||0)>=started&&noticeSettingKey(n));
+  if(!recent.length)return;
+  const settings=await getSettings(env),ids=await adminIds(env);
+  if(!ids.length)return;
+  for(const n of recent){
+    const key=noticeSettingKey(n);if(!key||settings[key]===false)continue;
+    const text=await managerNoticeText(env,n,key);
+    await Promise.allSettled(ids.map(id=>sendTg(env,id,text,'https://hcbototcet.teymurlannn.workers.dev')));
+  }
+}
+
+function noticeSettingKey(n:any):keyof NotifySettings|null{
+  const title=clean(n?.title,180).toLowerCase();
+  if(title.includes('новая заявка'))return'new_order';
+  if(title.includes('изменение заказа'))return'order_changed';
+  if(title.includes('заказ отменён'))return'order_cancelled';
+  return null;
+}
+
+async function managerNoticeText(env:Env,n:any,key:keyof NotifySettings){
+  const number=clean(n?.order_number,120),order=number?await bookingOrder(env,number):null,label=number?await displayOrderLabel(env,order||{order_number:number}):0;
+  const short=label?`Заказ #${String(label).padStart(2,'0')}`:(number||'Заказ');
+  const emoji=key==='new_order'?'🔔':key==='order_cancelled'?'❌':'🔄';
+  const title=key==='new_order'?'Новая заявка':key==='order_cancelled'?'Заказ отменён':'Заказ изменён';
+  if(!order)return`${emoji} <b>${title} · ${esc(short)}</b>\n\n${esc(n?.body||'Откройте STAFF для деталей.')}`;
+  const date=dmy(order.date),time=clean(order.time,20)||'—',address=addressOf(order),service=clean(order.service_name,160)||'Уборка',area=Number(order.area||0);
+  return`${emoji} <b>${title} · ${esc(short)}</b>\n\n📅 ${esc(date)} · ${esc(time)}\n📍 ${esc(address)}\n🧹 ${esc(service)}${area?` · ${area} м²`:''}`;
+}
+
+async function displayOrderLabel(env:Env,order:any){
+  const n=clean(order?.order_number,120);if(!n)return 0;
+  const x=await stateCall(env,'/opshuman/ensure','POST',{orders:[{order_number:n,created_at:order?.created_at,createdAt:order?.createdAt,date:order?.date,time:order?.time}]}).catch(()=>({labels:{}}));
+  return Number(x?.labels?.[n]||0);
+}
+async function bookingOrder(env:Env,n:string){
+  const ns:any=(env as any).BOOKING_STORE;if(!ns)return null;const stub=ns.get(ns.idFromName(STORE_NAME)),r=await stub.fetch('https://booking.internal/orders');if(!r?.ok)return null;const x:any=await r.json().catch(()=>({}));return(Array.isArray(x.orders)?x.orders:[]).find((o:any)=>String(o?.order_number||'')===n)||null;
+}
+function dmy(v:any){const s=clean(v,20);const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(s);return m?`${m[3]}.${m[2]}.${m[1]}`:s||'—'}
+function addressOf(o:any){return[o?.city,o?.address,o?.apartment?`кв./офис ${o.apartment}`:''].filter(Boolean).join(', ')||'Адрес не указан'}
+
+async function requestAuth(req:Request,env:Env,ctx?:ExecutionContext){
+  const u=new URL(req.url);u.pathname='/api/state';u.search='';const r=await clients.fetch(new Request(u.toString(),{method:'GET',headers:req.headers}),env,ctx as any);let data:any;try{data=await r.clone().json()}catch{return{ok:false,admin:false,data:null}}return{ok:r.ok&&data?.ok!==false,admin:!!data?.admin,data};
+}
 async function ownerAuth(req:Request,env:Env,ctx?:ExecutionContext){
   const u=new URL(req.url);u.pathname='/api/state';u.search='';
   const r=await clients.fetch(new Request(u.toString(),{method:'GET',headers:req.headers}),env,ctx as any);
@@ -122,6 +199,31 @@ async function ownerAuth(req:Request,env:Env,ctx?:ExecutionContext){
   if(!r.ok||data?.ok===false)return{ok:false,userId,response:r};
   if(!data?.owner)return{ok:false,userId,response:J({ok:false,error:'Настройки уведомлений доступны только руководителю'},403)};
   return{ok:true,userId,response:J(data)};
+}
+
+async function getSettings(env:Env):Promise<NotifySettings>{const x=await stateCall(env,'/opsnotify/settings').catch(()=>({settings:{}}));return sanitizeSettings(x?.settings||{})}
+async function managerNotificationEnabled(env:Env,key:keyof NotifySettings){const s=await getSettings(env);return s[key]!==false}
+
+function suppressManagerRecipients(env:Env,hideDelegated:boolean):Env{
+  const base:any=env,next:any={...base,ADMIN_IDS:''};
+  if(!hideDelegated||!base.STATE)return next as Env;
+  const ns:any=base.STATE;
+  next.STATE=new Proxy({}, {
+    get(_target,prop:any){
+      if(prop==='get')return(id:any)=>{
+        const stub=ns.get(id);
+        return new Proxy({}, {get(_s,p:any){
+          if(p==='fetch')return(input:any,init?:any)=>{
+            try{const raw=typeof input==='string'?input:input?.url||'';const u=new URL(raw);if(u.pathname==='/opsadmin/admins')return Promise.resolve(J({ok:true,admins:[]}))}catch{}
+            return stub.fetch(input,init);
+          };
+          const value=stub[p];return typeof value==='function'?value.bind(stub):value;
+        }});
+      };
+      const value=ns[prop];return typeof value==='function'?value.bind(ns):value;
+    }
+  });
+  return next as Env;
 }
 
 async function adminIds(env:Env){
