@@ -56,11 +56,16 @@ test('manager can correct imported client and subscription data after review',()
   for(const token of ['/api/staff/clients/update','subscription_snapshots','hcEditName','hcEditPhone','hcEditAddress','hcEditNote','hcClientSave'])assert.ok(code.includes(token),token);
 });
 
-test('entrypoint repairs client base visibility using the same reliable More-screen signal as admin access',()=>{
-  for(const token of ['CLIENT_ENTRY_FIX',"String(heads[i].textContent||'').trim()==='Ещё'",'#nav button[data-n="more"]','hcClientsEntry','Клиенты и абонементы','/api/state','accessState.owner'])assert.ok(index.includes(token),token);
+test('entrypoint repairs client base visibility only on the real More screen',()=>{
+  for(const token of ['CLIENT_ENTRY_FIX',"String(heads[i].textContent||'').trim()==='Ещё'","main.querySelector('.hc-client-page')",'hcClientsEntry','Клиенты и абонементы','/api/state','accessState.owner'])assert.ok(index.includes(token),token);
+  assert.ok(!index.includes('#nav button[data-n="more"]'));
   assert.ok(index.includes("document.addEventListener('hc:after-render',queue"));
   assert.ok(!index.includes('MutationObserver'));
   assert.ok(!index.includes('setInterval('));
+});
+
+test('client APIs inherit the STAFF launch token when Telegram initData is stale',()=>{
+  for(const token of ['X-App-Launch-Token',"pathname.indexOf('/api/staff/clients')===0",'window.fetch=function(input,init)','X-Telegram-Init-Data'])assert.ok(index.includes(token),token);
 });
 
 test('visible client entry shows live database counts to the owner',()=>{
