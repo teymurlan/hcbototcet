@@ -14,13 +14,33 @@ const CLIENT_ENTRY_FIX = String.raw`<script>
   var accessState=null,clientSummary=null,patchQueued=false,lateTimer=0;
   var rawFetch=window.fetch.bind(window);
   function tg(){return window.Telegram&&window.Telegram.WebApp}
-  function headers(){var t=tg();return {'X-App-Launch-Token':new URLSearchParams(location.search).get('launch')||'','X-Telegram-Init-Data':t&&t.initData||''}}
-  async function api(path){var r=await rawFetch(path,{headers:headers(),cache:'no-store'}),x=await r.json().catch(function(){return{error:'Ошибка сервера'}});if(!r.ok||x.ok===false)throw Error(x.error||'Ошибка');return x}
+  function authHeaders(){var t=tg();return {'X-App-Launch-Token':new URLSearchParams(location.search).get('launch')||'','X-Telegram-Init-Data':t&&t.initData||''}}
+
+  // staff-clients historically sent only Telegram initData. On a long-lived Mini App
+  // that value can expire while the app launch token is still valid. Add the same
+  // launch-token authentication used by the rest of STAFF to every client API call.
+  window.fetch=function(input,init){
+    try{
+      var raw=typeof input==='string'?input:(input&&input.url)||'';
+      var pathname=new URL(raw,location.href).pathname;
+      if(pathname.indexOf('/api/staff/clients')===0){
+        init=Object.assign({},init||{});
+        var h=new Headers(init.headers||{}),auth=authHeaders();
+        if(auth['X-App-Launch-Token']&&!h.get('X-App-Launch-Token'))h.set('X-App-Launch-Token',auth['X-App-Launch-Token']);
+        if(auth['X-Telegram-Init-Data']&&!h.get('X-Telegram-Init-Data'))h.set('X-Telegram-Init-Data',auth['X-Telegram-Init-Data']);
+        init.headers=h;
+      }
+    }catch(e){}
+    return rawFetch(input,init);
+  };
+
+  async function api(path){var r=await rawFetch(path,{headers:authHeaders(),cache:'no-store'}),x=await r.json().catch(function(){return{error:'Ошибка сервера'}});if(!r.ok||x.ok===false)throw Error(x.error||'Ошибка');return x}
   function moreScreenVisible(){
-    var heads=document.querySelectorAll('.section-title h2');
+    var main=document.getElementById('main');
+    if(!main||main.querySelector('.hc-client-page'))return false;
+    var heads=main.querySelectorAll('.section-title h2');
     for(var i=0;i<heads.length;i++)if(String(heads[i].textContent||'').trim()==='Ещё')return true;
-    var more=document.querySelector('#nav button[data-n="more"]');
-    return !!(more&&more.classList.contains('on'));
+    return false;
   }
   function summaryText(x){
     var rows=Array.isArray(x&&x.clients)?x.clients:[],subs=0,review=0;
