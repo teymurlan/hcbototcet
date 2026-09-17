@@ -55,3 +55,20 @@ test('client UI is event driven and does not add polling or DOM observers',()=>{
 test('manager can correct imported client and subscription data after review',()=>{
   for(const token of ['/api/staff/clients/update','subscription_snapshots','hcEditName','hcEditPhone','hcEditAddress','hcEditNote','hcClientSave'])assert.ok(code.includes(token),token);
 });
+
+test('entrypoint repairs client base visibility using the same reliable More-screen signal as admin access',()=>{
+  for(const token of ['CLIENT_ENTRY_FIX',"String(heads[i].textContent||'').trim()==='Ещё'",'#nav button[data-n="more"]','hcClientsEntry','Клиенты и абонементы','/api/state','accessState.owner'])assert.ok(index.includes(token),token);
+  assert.ok(index.includes("document.addEventListener('hc:after-render',queue"));
+  assert.ok(!index.includes('MutationObserver'));
+  assert.ok(!index.includes('setInterval('));
+});
+
+test('visible client entry shows live database counts to the owner',()=>{
+  for(const token of ['/api/staff/clients','клиентов · ','абонементов','проверить','hcClientsEntryMeta'])assert.ok(index.includes(token),token);
+});
+
+test('public client health endpoint exposes only aggregate counts, never client PII',()=>{
+  for(const token of ['/__hc_clients_health','imported_clients','imported_visits','imported_subscriptions','needs_review'])assert.ok(index.includes(token),token);
+  assert.ok(!index.includes('primary_phone'));
+  assert.ok(!index.includes('primary_address'));
+});
