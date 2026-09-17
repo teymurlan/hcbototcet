@@ -3,8 +3,9 @@ import type { Env } from './staff-clients';
 
 export type { Env } from './staff-clients';
 
-const BUILD='staff-control-center-2026-09-17-b';
+const BUILD='staff-control-center-2026-09-17-c';
 const SETTINGS_KEY='opsnotify:settings';
+const TEMPLATES_KEY='opsnotify:templates';
 const BROADCAST_PREFIX='opsnotify:broadcast:';
 const MAX_HISTORY=80;
 const STORE_NAME='house-cleaning-app-v1';
@@ -16,7 +17,8 @@ type NotifySettings={
   defects:boolean;
   finance_changes:boolean;
 };
-
+type TemplateKey='new_order'|'order_changed'|'order_cancelled'|'finance_changes'|'broadcast';
+type NotifyTemplates=Record<TemplateKey,string>;
 type BroadcastRecord={
   id:string;at:number;created_at:string;created_by:number;audience:string;title:string;body:string;
   requested:number;sent:number;failed:number;employee_ids:number[];
@@ -33,6 +35,15 @@ export class AppState extends ClientsAppState {
       const x:any=await readBody(req),next=sanitizeSettings(x?.settings||x);
       await this.state.storage.put(SETTINGS_KEY,next);
       return J({ok:true,settings:next});
+    }
+    if(u.pathname==='/opsnotify/templates'&&req.method==='GET'){
+      const stored=await this.state.storage.get<Partial<NotifyTemplates>>(TEMPLATES_KEY)||{};
+      return J({ok:true,templates:{...defaultTemplates(),...sanitizeTemplates(stored)},placeholders:templatePlaceholders()});
+    }
+    if(u.pathname==='/opsnotify/templates'&&req.method==='POST'){
+      const x:any=await readBody(req),next=sanitizeTemplates(x?.templates||x);
+      await this.state.storage.put(TEMPLATES_KEY,next);
+      return J({ok:true,templates:{...defaultTemplates(),...next},placeholders:templatePlaceholders()});
     }
     if(u.pathname==='/opsnotify/broadcast-history'&&req.method==='GET'){
       const rows=await this.state.storage.list<BroadcastRecord>({prefix:BROADCAST_PREFIX});
@@ -63,7 +74,7 @@ export default {
     const u=new URL(req.url);
     if(req.method==='GET'&&u.pathname==='/__hc_staff_version'){
       const base=await clients.fetch(req,env,ctx as any).catch(()=>null);let info:any={};try{if(base)info=await base.json()}catch{}
-      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,automatic_manager_notification_settings:true,logic_unchanged:true});
+      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,editable_notification_templates:true,automatic_manager_notification_settings:true,logic_unchanged:true});
     }
     if(u.pathname==='/api/staff/notification-settings'){
       const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
@@ -71,6 +82,15 @@ export default {
       if(req.method==='POST'){
         const body:any=await readBody(req),next=sanitizeSettings(body?.settings||body);
         return proxy(await stateRaw(env,'/opsnotify/settings','POST',{settings:next}));
+      }
+      return J({ok:false,error:'Method not allowed'},405);
+    }
+    if(u.pathname==='/api/staff/notification-templates'){
+      const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
+      if(req.method==='GET')return proxy(await stateRaw(env,'/opsnotify/templates'));
+      if(req.method==='POST'){
+        const body:any=await readBody(req),next=sanitizeTemplates(body?.templates||body);
+        return proxy(await stateRaw(env,'/opsnotify/templates','POST',{templates:next}));
       }
       return J({ok:false,error:'Method not allowed'},405);
     }
@@ -83,17 +103,20 @@ export default {
       return sendBroadcast(req,env,auth.userId,ctx);
     }
 
-    // Finance-detail alerts are manager-facing. Keep the normal employee update flow,
-    // but suppress only the manager Telegram recipient when the owner disabled it.
     if(u.pathname==='/api/staff/payment-details'&&req.method==='POST'){
       const auth=await requestAuth(req,env,ctx);
-      if(auth.ok&&!auth.admin&&!await managerNotificationEnabled(env,'finance_changes')){
-        return clients.fetch(req,suppressManagerRecipients(env,false),ctx as any);
+      if(auth.ok&&!auth.admin){
+        const response=await clients.fetch(req,suppressManagerRecipients(env,true),ctx as any);
+        if(response.ok&&await managerNotificationEnabled(env,'finance_changes')){
+          const who=clean(auth.data?.employee?.name||auth.data?.user?.first_name||auth.data?.employee?.phone||'Сотрудник',120);
+          await sendManagerTemplate(env,'finance_changes',{employee:who},new URL(req.url).origin).catch(()=>{});
+        }
+        return response;
       }
     }
 
-    // Defect delivery to the customer must remain untouched. Only the manager copy can
-    // be disabled, including delegated admins stored in STATE.
+    // Defect delivery can contain a photo and caption produced by the photo flow itself.
+    // Keep that delivery untouched when enabled; when disabled only the manager copy is muted.
     if(u.pathname==='/api/before'&&req.method==='POST'&&!await managerNotificationEnabled(env,'defects')){
       return clients.fetch(req,suppressManagerRecipients(env,true),ctx as any);
     }
@@ -108,10 +131,6 @@ export default {
       passThroughOnException(){try{(ctx as any).passThroughOnException?.()}catch{}},
       props:(ctx as any).props,
     };
-
-    // Existing scheduled logic still creates its durable audit notices, while its
-    // direct manager Telegram fan-out is muted here. After all scheduled promises
-    // settle, we deliver only the event classes enabled in the owner's settings.
     await clients.scheduled(controller,suppressManagerRecipients(env,false),wrappedCtx);
     if(waits.length)await Promise.allSettled(waits);
     await deliverEnabledScheduledNotices(env,started).catch(e=>console.error('Manager notification delivery failed',e));
@@ -136,7 +155,7 @@ async function sendBroadcast(req:Request,env:Env,userId:number,ctx?:ExecutionCon
   ids=[...new Set(ids)].slice(0,200);
   if(!ids.length)return J({ok:false,error:'Нет доступных получателей для рассылки'},400);
 
-  const text=`📣 <b>${esc(title)}</b>\n\n${esc(body)}\n\n<i>HOUSE CLEANING STAFF</i>`;
+  const templates=await getTemplates(env),text=renderTemplate(templates.broadcast,{title,body,brand:'HOUSE CLEANING STAFF'});
   const origin=new URL(req.url).origin;
   const results=await Promise.allSettled(ids.map(id=>sendTg(env,id,text,origin)));
   const sent=results.filter(r=>r.status==='fulfilled'&&!!r.value).length,failed=ids.length-sent,at=Date.now(),id=crypto.randomUUID();
@@ -170,11 +189,16 @@ function noticeSettingKey(n:any):keyof NotifySettings|null{
 async function managerNoticeText(env:Env,n:any,key:keyof NotifySettings){
   const number=clean(n?.order_number,120),order=number?await bookingOrder(env,number):null,label=number?await displayOrderLabel(env,order||{order_number:number}):0;
   const short=label?`Заказ #${String(label).padStart(2,'0')}`:(number||'Заказ');
-  const emoji=key==='new_order'?'🔔':key==='order_cancelled'?'❌':'🔄';
-  const title=key==='new_order'?'Новая заявка':key==='order_cancelled'?'Заказ отменён':'Заказ изменён';
-  if(!order)return`${emoji} <b>${title} · ${esc(short)}</b>\n\n${esc(n?.body||'Откройте STAFF для деталей.')}`;
+  const templates=await getTemplates(env),template=(templates as any)[key]||defaultTemplates()[key as TemplateKey]||'{body}';
+  if(!order)return renderTemplate(template,{order:short,body:clean(n?.body||'Откройте STAFF для деталей.',900),date:'—',time:'—',address:'—',service:'—',area:'',employee:''});
   const date=dmy(order.date),time=clean(order.time,20)||'—',address=addressOf(order),service=clean(order.service_name,160)||'Уборка',area=Number(order.area||0);
-  return`${emoji} <b>${title} · ${esc(short)}</b>\n\n📅 ${esc(date)} · ${esc(time)}\n📍 ${esc(address)}\n🧹 ${esc(service)}${area?` · ${area} м²`:''}`;
+  return renderTemplate(template,{order:short,body:clean(n?.body||'',900),date,time,address,service,area:area?`${area} м²`:'',employee:''});
+}
+
+async function sendManagerTemplate(env:Env,key:TemplateKey,values:Record<string,any>,origin:string){
+  const templates=await getTemplates(env),ids=await adminIds(env);if(!ids.length)return;
+  const text=renderTemplate(templates[key]||defaultTemplates()[key],values);
+  await Promise.allSettled(ids.map(id=>sendTg(env,id,text,origin)));
 }
 
 async function displayOrderLabel(env:Env,order:any){
@@ -202,6 +226,7 @@ async function ownerAuth(req:Request,env:Env,ctx?:ExecutionContext){
 }
 
 async function getSettings(env:Env):Promise<NotifySettings>{const x=await stateCall(env,'/opsnotify/settings').catch(()=>({settings:{}}));return sanitizeSettings(x?.settings||{})}
+async function getTemplates(env:Env):Promise<NotifyTemplates>{const x=await stateCall(env,'/opsnotify/templates').catch(()=>({templates:{}}));return{...defaultTemplates(),...sanitizeTemplates(x?.templates||{})}}
 async function managerNotificationEnabled(env:Env,key:keyof NotifySettings){const s=await getSettings(env);return s[key]!==false}
 
 function suppressManagerRecipients(env:Env,hideDelegated:boolean):Env{
@@ -239,6 +264,16 @@ async function sendTg(env:Env,id:number,text:string,origin:string){
 }
 
 function defaultSettings():NotifySettings{return{new_order:true,order_changed:true,order_cancelled:true,defects:true,finance_changes:true}}
+function defaultTemplates():NotifyTemplates{return{
+  new_order:'🔔 Новая заявка · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
+  order_changed:'🔄 Заказ изменён · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
+  order_cancelled:'❌ Заказ отменён · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
+  finance_changes:'💳 Изменены реквизиты сотрудника\n\nСотрудник: {employee}\nОткройте STAFF для проверки.',
+  broadcast:'📣 {title}\n\n{body}\n\n{brand}',
+}}
+function templatePlaceholders(){return{new_order:['order','date','time','address','service','area','body'],order_changed:['order','date','time','address','service','area','body'],order_cancelled:['order','date','time','address','service','area','body'],finance_changes:['employee'],broadcast:['title','body','brand']}}
+function sanitizeTemplates(v:any):Partial<NotifyTemplates>{const out:Partial<NotifyTemplates>={};for(const k of Object.keys(defaultTemplates()) as TemplateKey[]){if(v?.[k]!==undefined){const s=String(v[k]??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim().slice(0,1800);if(s)out[k]=s}}return out}
+function renderTemplate(template:string,values:Record<string,any>){let out=esc(template);for(const [k,v] of Object.entries(values||{})){const safe=esc(v??'');out=out.split(`{${k}}`).join(safe)}return out.replace(/\s+·\s*$/gm,'').replace(/\n{3,}/g,'\n\n').trim()}
 function sanitizeSettings(v:any):NotifySettings{const d=defaultSettings();return{new_order:v?.new_order!==undefined?!!v.new_order:d.new_order,order_changed:v?.order_changed!==undefined?!!v.order_changed:d.order_changed,order_cancelled:v?.order_cancelled!==undefined?!!v.order_cancelled:d.order_cancelled,defects:v?.defects!==undefined?!!v.defects:d.defects,finance_changes:v?.finance_changes!==undefined?!!v.finance_changes:d.finance_changes}}
 async function stateCall(env:Env,path:string,method='GET',body?:any){const r=await stateRaw(env,path,method,body);return await r.json().catch(()=>({}))}
 async function stateRaw(env:Env,path:string,method='GET',body?:any){const id=(env as any).STATE.idFromName('global'),stub=(env as any).STATE.get(id);return stub.fetch('https://state.local'+path,{method,headers:body===undefined?undefined:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)})}
