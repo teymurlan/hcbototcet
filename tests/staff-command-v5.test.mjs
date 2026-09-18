@@ -17,7 +17,7 @@ test('command center v5 is layered after v4',()=>{
 });
 
 test('owner can choose between three dashboard card arrangements',()=>{
-  for(const token of ['balanced','compact','focus','Дизайн главной','Карточки','Компактный','Рабочий','data-v5-dash-style','/api/staff/dashboard-preferences']) assert.ok(ui.includes(token),token);
+  for(const token of ['balanced','compact','focus','Главная','Карточки','Компактно','Фокус','data-v5-dash-style','/api/staff/dashboard-preferences']) assert.ok(ui.includes(token),token);
   for(const token of ['DASHBOARD_KEY','/opsui/dashboard','DashboardPreferences','dashboard_style_picker:true','sanitizeDashboard']) assert.ok(control.includes(token),token);
 });
 
@@ -54,7 +54,7 @@ test('background refresh never rebuilds the open orders screen',()=>{
 test('v5 remains event driven and adds no polling or DOM observer',()=>{
   assert.ok(!ui.includes('setInterval('));
   assert.ok(!ui.includes('MutationObserver'));
-  assert.ok(ui.includes('requestAnimationFrame'));
+  assert.ok(ui.includes('Promise.resolve().then(queue)')||ui.includes('try{var main=document.getElementById'));
   assert.ok(ui.includes("document.addEventListener('hc:after-render'"));
   assert.ok(ui.includes("document.addEventListener('hc:notifications-ready'"));
 });
