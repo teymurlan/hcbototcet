@@ -65,7 +65,7 @@ test('owner can customize app layout density and motion inside STAFF',()=>{
 });
 
 test('gentle motion is the default and disables expensive card staggering',()=>{
-  assert.ok(v5.includes('html.hc-ui-motion-gentle #main.hc-motion-ready .metric'));
+  assert.ok(v5.includes('html.hc-ui-motion-gentle #main.hc-motion-ready *'));
   assert.ok(v5.includes('animation:none!important'));
   assert.ok(control.includes("motion:'gentle'") || control.includes(":'gentle'"));
 });

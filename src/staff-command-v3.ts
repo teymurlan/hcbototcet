@@ -106,7 +106,7 @@ const COMMAND_JS=String.raw`
 (function(){
   if(window.__hcCommandV3)return;window.__hcCommandV3=true;document.documentElement.classList.add('hc-command-v3');
   var queued=false,lastOrdersTap=0,returnStack=[],notifyCache=null,settingsCache=null,broadcastCache=null,employeeCache=null;
-  try{returnStack=JSON.parse(sessionStorage.getItem('hc:v3:return-stack')||'[]')||[]}catch(e){returnStack=[]}
+  returnStack=[]
   function tg(){return window.Telegram&&window.Telegram.WebApp}
   function headers(){var t=tg(),h={'content-type':'application/json'},launch=new URLSearchParams(location.search).get('launch')||'';if(launch)h['X-App-Launch-Token']=launch;if(t&&t.initData)h['X-Telegram-Init-Data']=t.initData;return h}
   async function api(path,opt){opt=opt||{};var r=await fetch(path,{method:opt.method||'GET',headers:headers(),body:opt.body?JSON.stringify(opt.body):undefined,cache:'no-store'}),x=await r.json().catch(function(){return{ok:false,error:'Ошибка сервера'}});if(!r.ok||x.ok===false)throw Error(x.error||'Ошибка');return x}
@@ -114,8 +114,8 @@ const COMMAND_JS=String.raw`
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
   function currentTab(){var b=document.querySelector('#nav button.on');if(!b)return'';var t=String(b.textContent||'');if(/Обзор|Главная/i.test(t))return'home';if(/Заказ/i.test(t))return'orders';if(/Сотруд/i.test(t))return'employees';if(/Фото/i.test(t))return'photos';if(/Ещё/i.test(t))return'more';if(/Задан/i.test(t))return'tasks';if(/Стандарт/i.test(t))return'standards';if(/Проф/i.test(t))return'profile';return''}
   function navButton(key){var bs=[].slice.call(document.querySelectorAll('#nav button'));var re=key==='home'?/Обзор|Главная/i:key==='orders'?/Заказ/i:key==='employees'?/Сотруд/i:key==='photos'?/Фото/i:key==='more'?/Ещё/i:key==='tasks'?/Задан/i:key==='standards'?/Стандарт/i:key==='profile'?/Проф/i:null;return re?bs.find(function(b){return re.test(b.textContent||'')}):null}
-  function navTo(key){var b=navButton(key);if(b){b.click();return true}return false}
-  function saveStack(){try{sessionStorage.setItem('hc:v3:return-stack',JSON.stringify(returnStack.slice(-8)))}catch(e){}}
+  function navTo(key){if(key==='notifications'){openNotifications(true);return true}var b=navButton(key);if(b){b.click();return true}return false}
+  function saveStack(){returnStack=returnStack.slice(-8)}
   function pushOrigin(){var t=currentTab();if(!t)return;if(returnStack[returnStack.length-1]!==t){returnStack.push(t);saveStack()}}
   function popOrigin(){var t=returnStack.pop()||'';saveStack();return t}
   function isInternalOpen(el){return !!(el&&el.closest&&el.closest('[data-order],[data-employee],#fin,#hire,#sched,#notices,#regs,#hcClientsEntry,#hcAdminAccessCard,.hc-client-card'))}
@@ -135,12 +135,14 @@ const COMMAND_JS=String.raw`
   function decorateOrders(main){var h=main.querySelector(':scope>.section-title h2');if(h)h.textContent='Заявки';var sub=main.querySelector(':scope>.section-title span');if(sub)sub.textContent='Поиск, статусы и команда';makeOpenable(main);orderStats(main)}
   function decorateMore(main){var n=document.getElementById('notices');if(n)n.setAttribute('aria-label','Центр уведомлений: лента, настройки и рассылки')}
   function decorate(){var main=document.getElementById('main');if(!main)return;var p=page();if(p==='overview')decorateOverview(main);if(p==='orders')decorateOrders(main);else makeOpenable(main);if(p==='more')decorateMore(main);document.documentElement.classList.remove('hc-v3-orders-loading')}
-  function queue(){if(queued)return;queued=true;requestAnimationFrame(function(){queued=false;decorate()})}
+  function queue(){if(queued)return;queued=true;try{decorate()}finally{queued=false}}
 
   async function loadNotify(force){if(force||!notifyCache){var x=await api('/api/staff/notifications');notifyCache=x.notices||[]}if(force||!settingsCache){var s=await api('/api/staff/notification-settings');settingsCache=s.settings||{}}if(force||!broadcastCache){var b=await api('/api/staff/notification-broadcasts');broadcastCache=b.history||[]}return true}
   function notifyShell(){var main=document.getElementById('main');if(!main)return null;main.dataset.hcCatalogPage='notifications';main.innerHTML='<div class="hc-v3-notify-page"><div class="hc-v3-notify-head"><button class="hc-v3-back" id="hcV3NotifyBack">← Назад</button><h2>Оповещения</h2></div><div class="hc-v3-tabs"><button class="on" data-v3-tab="feed">Лента</button><button data-v3-tab="settings">Настройки</button><button data-v3-tab="broadcast">Рассылка</button></div><div id="hcV3NotifyPane" class="hc-v3-pane"><div class="hc-v3-empty">Загрузка…</div></div></div>';return main}
-  async function openNotifications(){pushOrigin();notifyShell();try{await loadNotify(true);renderNotifyTab('feed');try{document.dispatchEvent(new CustomEvent('hc:notifications-ready'))}catch(x){}}catch(e){var p=document.getElementById('hcV3NotifyPane');if(p)p.innerHTML='<div class="hc-v3-empty">'+esc(e.message)+'</div>';try{document.dispatchEvent(new CustomEvent('hc:notifications-ready'))}catch(x){}}}
+  async function openNotifications(skipOrigin){if(!skipOrigin)pushOrigin();notifyShell();try{await loadNotify(true);renderNotifyTab('feed');try{document.dispatchEvent(new CustomEvent('hc:notifications-ready'))}catch(x){}}catch(e){var p=document.getElementById('hcV3NotifyPane');if(p)p.innerHTML='<div class="hc-v3-empty">'+esc(e.message)+'</div>';try{document.dispatchEvent(new CustomEvent('hc:notifications-ready'))}catch(x){}}}
   window.__hcOpenNotifications=openNotifications;
+  window.__hcPushOrigin=function(key){if(key){if(returnStack[returnStack.length-1]!==key){returnStack.push(key);saveStack()}}else pushOrigin()};
+  window.__hcPopOrigin=function(){return popOrigin()};
   document.addEventListener('hc:open-notifications',function(){openNotifications()},false);
   function renderNotifyTab(tab){var pane=document.getElementById('hcV3NotifyPane');if(!pane)return;document.querySelectorAll('[data-v3-tab]').forEach(function(b){b.classList.toggle('on',b.dataset.v3Tab===tab)});if(tab==='feed')return renderFeed(pane);if(tab==='settings')return renderSettings(pane);return renderBroadcast(pane)}
   function renderFeed(pane){var a=notifyCache||[];pane.innerHTML=a.length?a.slice(0,80).map(function(n){return'<div class="hc-v3-notice"><div class="hc-v3-notice-top"><div class="hc-v3-notice-title"><span>'+iconFor(n.level,n.title)+'</span>'+esc(n.title||'Событие')+'</div><span class="hc-v3-notice-time">'+esc(fmt(n.at))+'</span></div><p>'+esc(n.body||'')+'</p></div>'}).join(''):'<div class="hc-v3-empty">Новых событий пока нет</div>'}
@@ -161,8 +163,8 @@ const COMMAND_JS=String.raw`
     if(t.closest('#hcV3NotifyBack')){e.preventDefault();var back=popOrigin()||'more';if(!navTo(back))navTo('more');return}
     if(t.closest('#hcV3Send')){e.preventDefault();sendBroadcast();return}
     var card=t.closest('.order-card.hc-v3-openable,.rt-priority-list .card.hc-v3-openable');if(card&&!t.closest('button,input,select,textarea,a')){var b=card.querySelector('.hc-inline-open,.btn[data-order],[data-order]');if(b){e.preventDefault();pushOrigin();b.click();return}}
-    var backBtn=t.closest('.back,.hc-client-back');if(backBtn&&returnStack.length){e.preventDefault();e.stopImmediatePropagation();var dest=popOrigin();if(dest&&navTo(dest))return}
-    if(isInternalOpen(t)&&!t.closest('.back,.hc-client-back,#nav'))pushOrigin();
+    var backBtn=t.closest('.back,.hc-client-back,.hc-v4-back');if(backBtn&&returnStack.length){e.preventDefault();e.stopImmediatePropagation();var dest=popOrigin();if(dest&&navTo(dest))return}
+    if(isInternalOpen(t)&&!t.closest('.back,.hc-client-back,.hc-v4-back,#nav')){if(window.__hcSkipOriginOnce)window.__hcSkipOriginOnce=false;else pushOrigin()}
   },true);
   document.addEventListener('keydown',function(e){var card=e.target&&e.target.closest&&e.target.closest('.order-card.hc-v3-openable');if(card&&(e.key==='Enter'||e.key===' ')){e.preventDefault();var b=card.querySelector('.hc-inline-open,.btn[data-order],[data-order]');if(b){pushOrigin();b.click()}}},true);
   document.addEventListener('change',function(e){var t=e.target;if(t&&t.matches('[data-v3-setting]'))saveSetting(t.dataset.v3Setting,t.checked).catch(function(){t.checked=!t.checked});if(t&&t.id==='hcV3Audience'){var p=document.getElementById('hcV3Picks');if(p)p.style.display=t.value==='selected'?'grid':'none'}},true);

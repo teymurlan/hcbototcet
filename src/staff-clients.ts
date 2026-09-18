@@ -198,7 +198,7 @@ const CLIENT_JS=String.raw`<script>
   document.addEventListener('click',function(e){var t=e.target&&e.target.closest&&e.target.closest('#hcClientsEntry,#hcClientBack,#hcClientImport,.hc-client-card,#hcClientSave,#hcClientClose');if(!t)return;if(t.id==='hcClientsEntry')openClients();else if(t.id==='hcClientBack')backMore();else if(t.id==='hcClientImport')document.getElementById('hcClientFile').click();else if(t.classList.contains('hc-client-card'))openDetail(t.getAttribute('data-client-id'));else if(t.id==='hcClientSave')saveDetail();else if(t.id==='hcClientClose')closeDetail()},true);
   document.addEventListener('input',function(e){if(e.target&&e.target.id==='hcClientSearch')renderList(e.target.value)},true);
   document.addEventListener('change',function(e){if(e.target&&e.target.id==='hcClientFile'){var f=e.target.files&&e.target.files[0];e.target.value='';importFile(f)}},true);
-  document.addEventListener('hc:after-render',function(){requestAnimationFrame(patchMore)},true);document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#nav button'))requestAnimationFrame(function(){requestAnimationFrame(patchMore)})},true);window.addEventListener('pageshow',function(){requestAnimationFrame(patchMore)});requestAnimationFrame(patchMore);
+  document.addEventListener('hc:after-render',function(){Promise.resolve().then(patchMore)},true);document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#nav button'))Promise.resolve().then(patchMore)},true);window.addEventListener('pageshow',function(){Promise.resolve().then(patchMore)});Promise.resolve().then(patchMore);
 })();
 </script>`;
 

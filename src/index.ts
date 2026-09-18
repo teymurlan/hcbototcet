@@ -16,7 +16,7 @@ type _HumanOrdersChainContract = HumanOrdersEnv;
 
 const CLIENT_ENTRY_FIX = String.raw`<script>
 (function(){
-  var accessState=null,clientSummary=null,patchQueued=false,lateTimer=0;
+  var accessState=null,clientSummary=null,patchQueued=false;
   var rawFetch=window.fetch.bind(window);
   function tg(){return window.Telegram&&window.Telegram.WebApp}
   function authHeaders(){var t=tg();return {'X-App-Launch-Token':new URLSearchParams(location.search).get('launch')||'','X-Telegram-Init-Data':t&&t.initData||''}}
@@ -37,10 +37,10 @@ const CLIENT_ENTRY_FIX = String.raw`<script>
   async function api(path){var r=await rawFetch(path,{headers:authHeaders(),cache:'no-store'}),x=await r.json().catch(function(){return{error:'Ошибка сервера'}});if(!r.ok||x.ok===false)throw Error(x.error||'Ошибка');return x}
   function moreScreenVisible(){var main=document.getElementById('main');if(!main||main.querySelector('.hc-client-page'))return false;var heads=main.querySelectorAll('.section-title h2');for(var i=0;i<heads.length;i++)if(String(heads[i].textContent||'').trim()==='Ещё')return true;return false}
   function summaryText(x){var rows=Array.isArray(x&&x.clients)?x.clients:[],subs=0,review=0;rows.forEach(function(c){var ss=Array.isArray(c.subscription_snapshots)?c.subscription_snapshots:[];subs+=ss.length;if(c.needs_review||ss.some(function(s){return s&&s.needs_review}))review++});return rows.length+' клиентов · '+subs+' абонементов'+(review?' · '+review+' проверить':'')}
-  function ensureCard(){var main=document.getElementById('main');if(!main)return null;var b=document.getElementById('hcClientsEntry');if(!b){b=document.createElement('button');b.type='button';b.id='hcClientsEntry';b.className='hc-clients-entry';b.innerHTML='<span><strong>Клиенты и абонементы</strong><span id="hcClientsEntryMeta">База клиентов HOUSE CLEANING</span></span><i>›</i>';var admin=document.getElementById('hcAdminAccessCard');if(admin&&admin.parentNode===main)main.insertBefore(b,admin);else main.appendChild(b)}return b}
+  function ensureCard(){return document.getElementById('hcClientsEntry')}
   async function patch(){if(!moreScreenVisible())return;if(!accessState){try{accessState=await api('/api/state')}catch(e){return}}if(!accessState||!accessState.owner)return;var card=ensureCard();if(!card)return;if(!clientSummary){try{clientSummary=await api('/api/staff/clients')}catch(e){clientSummary=null}}var meta=document.getElementById('hcClientsEntryMeta');if(meta&&clientSummary)meta.textContent=summaryText(clientSummary)}
-  function queue(){if(!patchQueued){patchQueued=true;requestAnimationFrame(function(){patchQueued=false;patch()})}if(lateTimer)clearTimeout(lateTimer);lateTimer=setTimeout(function(){lateTimer=0;patch()},100)}
-  document.addEventListener('hc:after-render',queue,false);document.addEventListener('click',function(e){var t=e.target;if(t&&t.closest&&t.closest('button'))queue()},false);window.addEventListener('pageshow',queue);document.addEventListener('visibilitychange',function(){if(!document.hidden)queue()});queue();
+  function queue(){if(patchQueued)return;patchQueued=true;Promise.resolve().then(function(){patchQueued=false;patch()})}
+  document.addEventListener('hc:after-render',queue,false);window.addEventListener('pageshow',queue);document.addEventListener('visibilitychange',function(){if(!document.hidden)queue()});queue();
 })();
 </script>`;
 
@@ -73,6 +73,9 @@ export default {
         dashboard_style_picker_v5: true,
         notification_center_v5: true,
         stable_orders_live_refresh_v5: true,
+        stable_navigation_v7: true,
+        no_late_layout_patches_v7: true,
+        pinned_context_back_v7: true,
         role_based: true,
         business_logic_unchanged: true,
       });

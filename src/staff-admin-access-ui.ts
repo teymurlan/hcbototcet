@@ -22,7 +22,7 @@ button,.btn,[role="button"]{touch-action:manipulation}
 const ACCESS_SCRIPT = String.raw`
 <script>
 (function(){
-  var accessState=null,patching=false,patchQueued=false,latePatchTimer=0;
+  var accessState=null,patching=false,patchQueued=false;
   var rawFetch=window.fetch.bind(window);
   function tg(){return window.Telegram&&window.Telegram.WebApp}
   function headers(){var t=tg();return {'content-type':'application/json','X-App-Launch-Token':new URLSearchParams(location.search).get('launch')||'','X-Telegram-Init-Data':t&&t.initData||''}}
@@ -47,11 +47,11 @@ const ACCESS_SCRIPT = String.raw`
   function patchRole(){var role=document.getElementById('role');if(!role||!accessState||!accessState.admin)return;var value=accessState.owner?'Руководитель':'Администратор';if(role.textContent!==value)role.textContent=value}
   function moreScreenVisible(){var heads=document.querySelectorAll('.section-title h2');for(var i=0;i<heads.length;i++)if(String(heads[i].textContent||'').trim()==='Ещё')return true;return false}
   function patchAdminCard(){
-    if(!accessState||!accessState.admin||!moreScreenVisible()||document.getElementById('hcAdminAccessCard'))return;
-    var main=document.getElementById('main');if(!main)return;
-    var card=document.createElement('div');card.id='hcAdminAccessCard';card.className='card hc-admin-access-card';
+    if(!accessState||!accessState.admin||!moreScreenVisible())return;
+    var main=document.getElementById('main');if(!main)return,card=document.getElementById('hcAdminAccessCard');
+    if(!card){card=document.createElement('div');card.id='hcAdminAccessCard';card.className='card hc-admin-access-card';main.appendChild(card)}
     card.innerHTML='<div class="hc-admin-icon">♛</div><div class="title">Администраторы</div><p>'+(accessState.owner?'Назначайте администраторов, которые смогут управлять заказами, сотрудниками, фотоотчётами, графиком и финансами.':'Список пользователей с административным доступом. Назначать и снимать администраторов может только руководитель.')+'</p><button id="hcAdminAccessOpen" class="btn soft block">Управление администраторами</button>';
-    main.appendChild(card);var open=document.getElementById('hcAdminAccessOpen');if(open)open.onclick=openAdminAccess;
+    var open=document.getElementById('hcAdminAccessOpen');if(open)open.onclick=openAdminAccess;
   }
 
   function personHtml(x,ownerMode){
@@ -74,19 +74,14 @@ const ACCESS_SCRIPT = String.raw`
   }
 
   function patch(){if(patching)return;patching=true;try{beautifyVisits();patchRole();patchAdminCard()}finally{patching=false}}
-  function queuePatch(){
-    if(!patchQueued){patchQueued=true;requestAnimationFrame(function(){patchQueued=false;patch()})}
-    if(latePatchTimer)clearTimeout(latePatchTimer);
-    latePatchTimer=setTimeout(function(){latePatchTimer=0;patch()},90);
-  }
+  function queuePatch(){if(patchQueued)return;patchQueued=true;Promise.resolve().then(function(){patchQueued=false;patch()})}
   async function bootAccess(){try{accessState=await api('/api/state')}catch(e){}patch()}
 
   /* Event-driven only: no MutationObserver and no perpetual interval. */
-  document.addEventListener('click',function(e){var t=e.target;if(t&&t.closest&&t.closest('button'))queuePatch()},false);
+  document.addEventListener('hc:after-render',queuePatch,false);
   document.addEventListener('change',function(e){var t=e.target;if(t&&(t.id==='rtPlan'||(t.classList&&t.classList.contains('rt-date'))||(t.classList&&t.classList.contains('rt-time'))))queuePatch()},false);
   window.addEventListener('pageshow',queuePatch,{passive:true});
-  setTimeout(bootAccess,40);
-  setTimeout(queuePatch,240);
+  bootAccess();
 })();
 </script>`;
 

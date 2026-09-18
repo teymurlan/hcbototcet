@@ -32,8 +32,9 @@ test('subscription visits render as visible framed date/time cards on iPhone',()
 
 test('UI patching is event-driven and does not continuously scan the DOM',()=>{
   assert.ok(ui.includes('function queuePatch()'));
-  assert.ok(ui.includes("document.addEventListener('click'"));
+  assert.ok(ui.includes("document.addEventListener('hc:after-render'"));
   assert.ok(ui.includes("document.addEventListener('change'"));
+  assert.ok(ui.includes('Promise.resolve().then'));
   assert.ok(!ui.includes('new MutationObserver('));
   assert.ok(!/setInterval\s*\(/.test(ui));
 });

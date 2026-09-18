@@ -58,6 +58,6 @@ test('finance manager alert is customizable while defect photo delivery remains 
 test('v4 remains event-driven and adds no DOM observer or interval polling',()=>{
   assert.ok(!ui.includes('MutationObserver'));
   assert.ok(!ui.includes('setInterval('));
-  assert.ok(ui.includes('requestAnimationFrame'));
+  assert.ok(ui.includes('try{decorate()}finally{queued=false}'));
   assert.ok(ui.includes("document.addEventListener('hc:after-render'"));
 });

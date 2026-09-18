@@ -32,7 +32,8 @@ test('orders screen uses compact summary, horizontal status filters and guards d
 });
 
 test('back navigation remembers the real source screen instead of a hardcoded destination',()=>{
-  for(const token of ['hc:v3:return-stack','pushOrigin','popOrigin','returnStack','sessionStorage','.back,.hc-client-back','navTo(dest)']) assert.ok(ui.includes(token),token);
+  for(const token of ['returnStack=[]','pushOrigin','popOrigin','returnStack','.back,.hc-client-back,.hc-v4-back','navTo(dest)',"if(key==='notifications')"]) assert.ok(ui.includes(token),token);
+  assert.ok(!ui.includes("sessionStorage.getItem('hc:v3:return-stack')"));
 });
 
 test('bottom navigation is smaller iOS-like glass',()=>{
@@ -72,6 +73,6 @@ test('critical employee and customer defect delivery remains independent from ma
 test('new interface layer is event driven with no DOM polling',()=>{
   assert.ok(!ui.includes('MutationObserver'));
   assert.ok(!ui.includes('setInterval('));
-  assert.ok(ui.includes('requestAnimationFrame'));
+  assert.ok(ui.includes('try{decorate()}finally{queued=false}'));
   assert.ok(ui.includes("document.addEventListener('hc:after-render'"));
 });

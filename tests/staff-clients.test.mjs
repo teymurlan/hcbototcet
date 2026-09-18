@@ -4,6 +4,7 @@ import fs from 'node:fs';
 
 const code=fs.readFileSync('src/staff-clients.ts','utf8');
 const index=fs.readFileSync('src/index.ts','utf8');
+const finalUi=fs.readFileSync('src/staff-final-ui.ts','utf8');
 
 test('client database is the active domain above the existing STAFF stack',()=>{
   assert.match(index,/from '\.\/staff-clients'/);
@@ -48,7 +49,7 @@ test('client UI adds an owner-only entry in More and supports private JSON impor
 test('client UI is event driven and does not add polling or DOM observers',()=>{
   assert.ok(!code.includes('MutationObserver'));
   assert.ok(!code.includes('setInterval('));
-  assert.ok(code.includes('requestAnimationFrame(patchMore)'));
+  assert.ok(code.includes('Promise.resolve().then(patchMore)'));
   assert.ok(code.includes("document.addEventListener('hc:after-render'"));
 });
 
@@ -57,7 +58,8 @@ test('manager can correct imported client and subscription data after review',()
 });
 
 test('entrypoint repairs client base visibility only on the real More screen',()=>{
-  for(const token of ['CLIENT_ENTRY_FIX',"String(heads[i].textContent||'').trim()==='Ещё'","main.querySelector('.hc-client-page')",'hcClientsEntry','Клиенты и абонементы','/api/state','accessState.owner'])assert.ok(index.includes(token),token);
+  for(const token of ['CLIENT_ENTRY_FIX',"String(heads[i].textContent||'').trim()==='Ещё'","main.querySelector('.hc-client-page')",'hcClientsEntry','/api/state','accessState.owner'])assert.ok(index.includes(token),token);
+  assert.ok(finalUi.includes('Клиенты и абонементы'));
   assert.ok(!index.includes('#nav button[data-n="more"]'));
   assert.ok(index.includes("document.addEventListener('hc:after-render',queue"));
   assert.ok(!index.includes('MutationObserver'));

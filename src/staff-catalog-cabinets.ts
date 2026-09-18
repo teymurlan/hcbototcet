@@ -317,6 +317,7 @@ html.hc-catalog-cabinets .nav button.on{color:#111820!important}
   html.hc-catalog-cabinets #main[data-hc-catalog-page="overview"] .rt-priority-list .card{padding-right:86px!important}
   html.hc-catalog-cabinets .hc-inline-open{min-width:64px!important;right:8px!important}
 }
+html.hc-ui-motion-gentle .hc-catalog-v2-appear,html.hc-ui-motion-gentle .hc-catalog-v2-cell,html.hc-ui-motion-off .hc-catalog-v2-appear,html.hc-ui-motion-off .hc-catalog-v2-cell{animation:none!important;transition:none!important}
 @media(prefers-reduced-motion:reduce){
   .hc-catalog-v2-appear,.hc-catalog-v2-cell{animation:none!important;transition:none!important}
 }
@@ -360,7 +361,7 @@ const CABINET_JS=String.raw`
     }
     main.querySelectorAll('.section-title,.hero,.grid').forEach(function(el){if(!el.dataset.hcCatalogV2Head){el.dataset.hcCatalogV2Head='1';el.classList.add('hc-catalog-v2-appear')}});
   }
-  function queue(){if(queued)return;queued=true;requestAnimationFrame(function(){queued=false;decorate()})}
+  function queue(){if(queued)return;queued=true;try{decorate()}finally{queued=false}}
   document.addEventListener('hc:after-render',queue,false);
   document.addEventListener('click',function(e){var t=e.target;if(t&&t.closest&&t.closest('button,.card,[data-employee]'))queue()},false);
   document.addEventListener('change',queue,false);

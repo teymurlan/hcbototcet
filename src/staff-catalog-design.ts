@@ -223,6 +223,7 @@ html.hc-catalog-ui .sticky-actions{bottom:calc(86px + env(safe-area-inset-bottom
   html.hc-catalog-ui .order-card,html.hc-catalog-ui .rt-priority-list .card{padding-right:91px!important}
 }
 @media(max-height:700px){.hc-onboarding-slide{grid-template-rows:minmax(205px,.9fr) auto}.hc-onboarding-visual{min-height:205px}.hc-onboarding-copy h2{font-size:25px}.hc-onboarding-copy p{font-size:13px;margin-top:8px}}
+html.hc-ui-motion-gentle .hc-catalog-appear,html.hc-ui-motion-gentle .hc-catalog-card,html.hc-ui-motion-off .hc-catalog-appear,html.hc-ui-motion-off .hc-catalog-card{animation:none!important;transition:none!important}
 @media(prefers-reduced-motion:reduce){.hc-onboarding,.hc-onboarding-track,.hc-onboarding-dot{transition:none!important}}
 </style>`;
 
@@ -249,7 +250,7 @@ const CATALOG_JS=String.raw`
     });
   }
   var decorQueued=false;
-  function queueDecor(){if(decorQueued)return;decorQueued=true;requestAnimationFrame(function(){decorQueued=false;decorate()})}
+  function queueDecor(){if(decorQueued)return;decorQueued=true;try{decorate()}finally{decorQueued=false}}
   document.addEventListener('hc:after-render',queueDecor,false);
   document.addEventListener('click',queueDecor,false);
   window.addEventListener('pageshow',queueDecor);
