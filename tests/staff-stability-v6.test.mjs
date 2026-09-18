@@ -52,7 +52,7 @@ test('legacy icon polishers no longer watch the full DOM',()=>{
 test('notification template editing is one-at-a-time for mobile ergonomics',()=>{
   assert.ok(v5.includes("textKey='new_order'"));
   assert.ok(v5.includes('data-v5-text-key'));
-  assert.ok(v5.includes('Сначала выберите тип уведомления'));
+  assert.ok(v5.includes('Выберите тип, измените текст'));
   assert.ok(v5.includes('Тест в Telegram'));
   assert.ok(v5.includes('Сохранить изменения'));
 });
