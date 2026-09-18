@@ -106,7 +106,7 @@ const COMMAND_JS=String.raw`
 (function(){
   if(window.__hcCommandV3)return;window.__hcCommandV3=true;document.documentElement.classList.add('hc-command-v3');
   var queued=false,lastOrdersTap=0,returnStack=[],notifyCache=null,settingsCache=null,broadcastCache=null,employeeCache=null;
-  try{returnStack=JSON.parse(sessionStorage.getItem('hc:v3:return-stack')||'[]')||[]}catch(e){returnStack=[]}
+  returnStack=[]
   function tg(){return window.Telegram&&window.Telegram.WebApp}
   function headers(){var t=tg(),h={'content-type':'application/json'},launch=new URLSearchParams(location.search).get('launch')||'';if(launch)h['X-App-Launch-Token']=launch;if(t&&t.initData)h['X-Telegram-Init-Data']=t.initData;return h}
   async function api(path,opt){opt=opt||{};var r=await fetch(path,{method:opt.method||'GET',headers:headers(),body:opt.body?JSON.stringify(opt.body):undefined,cache:'no-store'}),x=await r.json().catch(function(){return{ok:false,error:'Ошибка сервера'}});if(!r.ok||x.ok===false)throw Error(x.error||'Ошибка');return x}
@@ -115,7 +115,7 @@ const COMMAND_JS=String.raw`
   function currentTab(){var b=document.querySelector('#nav button.on');if(!b)return'';var t=String(b.textContent||'');if(/Обзор|Главная/i.test(t))return'home';if(/Заказ/i.test(t))return'orders';if(/Сотруд/i.test(t))return'employees';if(/Фото/i.test(t))return'photos';if(/Ещё/i.test(t))return'more';if(/Задан/i.test(t))return'tasks';if(/Стандарт/i.test(t))return'standards';if(/Проф/i.test(t))return'profile';return''}
   function navButton(key){var bs=[].slice.call(document.querySelectorAll('#nav button'));var re=key==='home'?/Обзор|Главная/i:key==='orders'?/Заказ/i:key==='employees'?/Сотруд/i:key==='photos'?/Фото/i:key==='more'?/Ещё/i:key==='tasks'?/Задан/i:key==='standards'?/Стандарт/i:key==='profile'?/Проф/i:null;return re?bs.find(function(b){return re.test(b.textContent||'')}):null}
   function navTo(key){if(key==='notifications'){openNotifications(true);return true}var b=navButton(key);if(b){b.click();return true}return false}
-  function saveStack(){try{sessionStorage.setItem('hc:v3:return-stack',JSON.stringify(returnStack.slice(-8)))}catch(e){}}
+  function saveStack(){returnStack=returnStack.slice(-8)}
   function pushOrigin(){var t=currentTab();if(!t)return;if(returnStack[returnStack.length-1]!==t){returnStack.push(t);saveStack()}}
   function popOrigin(){var t=returnStack.pop()||'';saveStack();return t}
   function isInternalOpen(el){return !!(el&&el.closest&&el.closest('[data-order],[data-employee],#fin,#hire,#sched,#notices,#regs,#hcClientsEntry,#hcAdminAccessCard,.hc-client-card'))}
