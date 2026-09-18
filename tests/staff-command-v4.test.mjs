@@ -14,7 +14,7 @@ test('command center v4 extends v3 without replacing booking business logic',()=
 });
 
 test('dashboard quick actions use consistent vector icons and actionable metric cards',()=>{
-  for(const token of ['hc-v4-quick-grid','data-v4-go="orders"','data-v4-go="employees"','data-v4-go="photos"','data-v4-go="notify"','<svg viewBox="0 0 24 24">','data-v4-metric','Открыть график','Назначить команду','Управление командой','Открыть активные']) assert.ok(ui.includes(token),token);
+  for(const token of ['hc-v4-quick-grid','data-v4-go="orders"','data-v4-go="employees"','data-v4-go="photos"','data-v4-go="notify"','<svg viewBox="0 0 24 24">','data-v4-metric','Открыть сегодня','Назначить команду','Управление командой','Открыть активные']) assert.ok(ui.includes(token),token);
   assert.ok(!ui.includes("<i>▤</i>"));
   assert.ok(!ui.includes("<i>◎</i>"));
 });

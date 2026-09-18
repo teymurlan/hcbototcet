@@ -8,6 +8,7 @@ const SETTINGS_KEY='opsnotify:settings';
 const TEMPLATES_KEY='opsnotify:templates';
 const DASHBOARD_KEY='opsui:dashboard';
 const BROADCAST_PREFIX='opsnotify:broadcast:';
+const SUB_ALERT_KEY='opsnotify:subscription-alerts';
 const MAX_HISTORY=80;
 const STORE_NAME='house-cleaning-app-v1';
 
@@ -17,8 +18,9 @@ type NotifySettings={
   order_cancelled:boolean;
   defects:boolean;
   finance_changes:boolean;
+  subscriptions:boolean;
 };
-type TemplateKey='new_order'|'order_changed'|'order_cancelled'|'defects'|'finance_changes'|'broadcast';
+type TemplateKey='new_order'|'order_changed'|'order_cancelled'|'defects'|'finance_changes'|'subscriptions'|'broadcast';
 type NotifyTemplates=Record<TemplateKey,string>;
 type DashboardStyle='balanced'|'compact'|'focus';
 type UiDensity='comfortable'|'compact';
@@ -43,6 +45,13 @@ export class AppState extends ClientsAppState {
       const x:any=await readBody(req),next=sanitizeSettings(x?.settings||x);
       await this.state.storage.put(SETTINGS_KEY,next);
       return J({ok:true,settings:next});
+    }
+    if(u.pathname==='/opsnotify/subscription-claim'&&req.method==='POST'){
+      const x:any=await readBody(req),key=clean(x?.key,280);if(!key)return J({ok:false,error:'key required'},400);
+      const now=Date.now(),stored=await this.state.storage.get<Record<string,number>>(SUB_ALERT_KEY)||{},last=Number(stored[key]||0);
+      if(last>0)return J({ok:true,claimed:false,last});
+      const next:Record<string,number>={};for(const [k,v] of Object.entries(stored)){if(now-Number(v||0)<90*86400000)next[k]=Number(v||0)}
+      next[key]=now;await this.state.storage.put(SUB_ALERT_KEY,next);return J({ok:true,claimed:true,at:now});
     }
     if(u.pathname==='/opsnotify/templates'&&req.method==='GET'){
       const stored=await this.state.storage.get<Partial<NotifyTemplates>>(TEMPLATES_KEY)||{};
@@ -91,7 +100,7 @@ export default {
     const u=new URL(req.url);
     if(req.method==='GET'&&u.pathname==='/__hc_staff_version'){
       const base=await clients.fetch(req,env,ctx as any).catch(()=>null);let info:any={};try{if(base)info=await base.json()}catch{}
-      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,editable_notification_templates:true,notification_template_test:true,dashboard_style_picker:true,app_customization:true,stability_v6:true,automatic_manager_notification_settings:true,logic_unchanged:true});
+      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,editable_notification_templates:true,notification_template_test:true,dashboard_style_picker:true,app_customization:true,stability_v6:true,automatic_manager_notification_settings:true,subscription_alerts:true,staff_v2:true,logic_unchanged:true});
     }
     if(u.pathname==='/api/staff/notification-settings'){
       const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
@@ -164,6 +173,7 @@ export default {
     await clients.scheduled(controller,suppressManagerRecipients(env,false),wrappedCtx);
     if(waits.length)await Promise.allSettled(waits);
     await deliverEnabledScheduledNotices(env,started).catch(e=>console.error('Manager notification delivery failed',e));
+    await deliverSubscriptionAlerts(env).catch(e=>console.error('Subscription notification delivery failed',e));
   }
 };
 
@@ -199,7 +209,7 @@ async function sendTemplateTest(req:Request,env:Env,userId:number){
   const x:any=await readBody(req),key=clean(x?.key,40) as TemplateKey;
   if(!Object.prototype.hasOwnProperty.call(defaultTemplates(),key))return J({ok:false,error:'Неизвестный шаблон'},400);
   const ids=await adminIds(env),target=userId||ids[0];if(!target)return J({ok:false,error:'Не найден Telegram руководителя'},400);
-  const templates=await getTemplates(env),values:any={order:'Заказ #30',date:'18.09.2026',time:'14:30',address:'Санкт-Петербург, Невский проспект, 10',service:'Генеральная уборка',area:'65 м²',employee:'Тестовый сотрудник',title:'Тестовая рассылка',body:'Так будет выглядеть ваше сообщение.',brand:'HOUSE CLEANING STAFF'};
+  const templates=await getTemplates(env),values:any={order:'Заказ #30',date:'18.09.2026',time:'14:30',address:'Санкт-Петербург, Невский проспект, 10',service:'Генеральная уборка',area:'65 м²',employee:'Тестовый сотрудник',client:'Анна',subscription:'Поддерживающая уборка',remaining:'1',title:'Тестовая рассылка',body:'Так будет выглядеть ваше сообщение.',brand:'HOUSE CLEANING STAFF'};
   const text=renderTemplate(templates[key]||defaultTemplates()[key],values);
   await sendTg(env,target,text,new URL(req.url).origin);
   return J({ok:true});
@@ -223,6 +233,7 @@ function noticeSettingKey(n:any):keyof NotifySettings|null{
   if(title.includes('новая заявка'))return'new_order';
   if(title.includes('изменение заказа'))return'order_changed';
   if(title.includes('заказ отменён'))return'order_cancelled';
+  if(title.includes('абонемент'))return'subscriptions';
   return null;
 }
 
@@ -239,6 +250,32 @@ async function sendManagerTemplate(env:Env,key:TemplateKey,values:Record<string,
   const templates=await getTemplates(env),ids=await adminIds(env);if(!ids.length)return;
   const text=renderTemplate(templates[key]||defaultTemplates()[key],values);
   await Promise.allSettled(ids.map(id=>sendTg(env,id,text,origin)));
+}
+
+async function deliverSubscriptionAlerts(env:Env){
+  const settings=await getSettings(env);if(settings.subscriptions===false)return;
+  const data:any=await stateCall(env,'/opsclients/list?summary=1').catch(()=>({clients:[]})),clientsRows:any[]=Array.isArray(data?.clients)?data.clients:[];
+  const candidates:{key:string;client:string;subscription:string;remaining:string;address:string;body:string}[]=[];
+  for(const client of clientsRows){
+    const subs:any[]=Array.isArray(client?.subscription_snapshots)?client.subscription_snapshots:[];
+    for(let i=0;i<subs.length;i++){
+      const s=subs[i]||{},used=Number(s.used),total=Number(s.total),hasNumbers=Number.isFinite(used)&&Number.isFinite(total)&&total>=0,remaining=hasNumbers?Math.max(0,total-used):null;
+      const review=!!(client?.needs_review||s?.needs_review);
+      if(!review&&remaining!==0&&remaining!==1)continue;
+      const clientName=clean(client?.name||'Клиент',120),subscription=clean(s?.service||s?.source_text||'Абонемент',180),address=clean(s?.address||client?.primary_address||'Адрес не указан',260);
+      const state=review?'review':remaining===0?'empty':'one',fingerprint=[clean(client?.id,160),i,state,hasNumbers?used:'x',hasNumbers?total:'x'].join(':');
+      candidates.push({key:fingerprint,client:clientName,subscription,remaining:review?'нужно проверить':String(remaining),address,body:review?'Нужно проверить данные абонемента.':remaining===0?'Абонемент закончился.':'Осталась 1 уборка.'});
+    }
+  }
+  if(!candidates.length)return;
+  const ids=await adminIds(env);if(!ids.length)return;
+  const templates=await getTemplates(env),template=templates.subscriptions||defaultTemplates().subscriptions,origin='https://hcbototcet.teymurlannn.workers.dev';
+  for(const a of candidates.slice(0,40)){
+    const claim:any=await stateCall(env,'/opsnotify/subscription-claim','POST',{key:a.key}).catch(()=>({claimed:false}));if(!claim?.claimed)continue;
+    const text=renderTemplate(template,{client:a.client,subscription:a.subscription,remaining:a.remaining,address:a.address,body:a.body});
+    await Promise.allSettled(ids.map(id=>sendTg(env,id,text,origin)));
+    await stateCall(env,'/opsfinal/notice','POST',{audience:'admin',level:'warning',title:'Абонемент требует внимания',body:`${a.client} · ${a.body}`,at:Date.now()}).catch(()=>null);
+  }
 }
 
 async function displayOrderLabel(env:Env,order:any){
@@ -303,19 +340,20 @@ async function sendTg(env:Env,id:number,text:string,origin:string){
   const out:any=await r.json().catch(()=>({}));if(!r.ok||!out.ok)throw Error(out?.description||'Telegram API error');return out.result;
 }
 
-function defaultSettings():NotifySettings{return{new_order:true,order_changed:true,order_cancelled:true,defects:true,finance_changes:true}}
+function defaultSettings():NotifySettings{return{new_order:true,order_changed:true,order_cancelled:true,defects:true,finance_changes:true,subscriptions:true}}
 function defaultTemplates():NotifyTemplates{return{
   new_order:'🔔 Новая заявка · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
   order_changed:'🔄 Заказ изменён · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
   order_cancelled:'❌ Заказ отменён · {order}\n\n📅 {date} · {time}\n📍 {address}\n🧹 {service} · {area}',
   defects:'⚠️ Дефект до уборки · {order}\n\n📍 {address}\nКомментарий: {comment}',
   finance_changes:'💳 Изменены реквизиты сотрудника\n\nСотрудник: {employee}\nОткройте STAFF для проверки.',
+  subscriptions:'🎫 Абонемент · {client}\n\n{subscription}\nОстаток: {remaining}\n📍 {address}\n\n{body}',
   broadcast:'📣 {title}\n\n{body}\n\n{brand}',
 }}
-function templatePlaceholders(){return{new_order:['order','date','time','address','service','area','body'],order_changed:['order','date','time','address','service','area','body'],order_cancelled:['order','date','time','address','service','area','body'],defects:['order','address','comment'],finance_changes:['employee'],broadcast:['title','body','brand']}}
+function templatePlaceholders(){return{new_order:['order','date','time','address','service','area','body'],order_changed:['order','date','time','address','service','area','body'],order_cancelled:['order','date','time','address','service','area','body'],defects:['order','address','comment'],finance_changes:['employee'],subscriptions:['client','subscription','remaining','address','body'],broadcast:['title','body','brand']}}
 function sanitizeTemplates(v:any):Partial<NotifyTemplates>{const out:Partial<NotifyTemplates>={};for(const k of Object.keys(defaultTemplates()) as TemplateKey[]){if(v?.[k]!==undefined){const s=String(v[k]??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim().slice(0,1800);if(s)out[k]=s}}return out}
 function renderTemplate(template:string,values:Record<string,any>){let out=esc(template);for(const [k,v] of Object.entries(values||{})){const safe=esc(v??'');out=out.split(`{${k}}`).join(safe)}return out.replace(/\s+·\s*$/gm,'').replace(/\n{3,}/g,'\n\n').trim()}
-function sanitizeSettings(v:any):NotifySettings{const d=defaultSettings();return{new_order:v?.new_order!==undefined?!!v.new_order:d.new_order,order_changed:v?.order_changed!==undefined?!!v.order_changed:d.order_changed,order_cancelled:v?.order_cancelled!==undefined?!!v.order_cancelled:d.order_cancelled,defects:v?.defects!==undefined?!!v.defects:d.defects,finance_changes:v?.finance_changes!==undefined?!!v.finance_changes:d.finance_changes}}
+function sanitizeSettings(v:any):NotifySettings{const d=defaultSettings();return{new_order:v?.new_order!==undefined?!!v.new_order:d.new_order,order_changed:v?.order_changed!==undefined?!!v.order_changed:d.order_changed,order_cancelled:v?.order_cancelled!==undefined?!!v.order_cancelled:d.order_cancelled,defects:v?.defects!==undefined?!!v.defects:d.defects,finance_changes:v?.finance_changes!==undefined?!!v.finance_changes:d.finance_changes,subscriptions:v?.subscriptions!==undefined?!!v.subscriptions:d.subscriptions}}
 function sanitizeDashboard(v:any):DashboardPreferences{const style:DashboardStyle=['balanced','compact','focus'].includes(String(v?.style))?v.style:'balanced',density:UiDensity=['comfortable','compact'].includes(String(v?.density))?v.density:'comfortable',motion:UiMotion=['gentle','full','off'].includes(String(v?.motion))?v.motion:'gentle',text:UiText=['normal','large'].includes(String(v?.text))?v.text:'normal',nav:UiNav=['glass','compact'].includes(String(v?.nav))?v.nav:'glass',accent:UiAccent=['blue','graphite','mint'].includes(String(v?.accent))?v.accent:'blue';return{style,density,motion,text,nav,accent,updated_at:Number(v?.updated_at||Date.now())}}
 async function stateCall(env:Env,path:string,method='GET',body?:any){const r=await stateRaw(env,path,method,body);return await r.json().catch(()=>({}))}
 async function stateRaw(env:Env,path:string,method='GET',body?:any){const id=(env as any).STATE.idFromName('global'),stub=(env as any).STATE.get(id);return stub.fetch('https://state.local'+path,{method,headers:body===undefined?undefined:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)})}
