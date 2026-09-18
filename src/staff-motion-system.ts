@@ -85,7 +85,7 @@ export function applyStaffMotionSystem(app:string):string {
   let out=app;
   out=out.replace(
     "function M(html){document.getElementById('main').innerHTML=html;window.scrollTo(0,0)}",
-    "function M(html){var main=document.getElementById('main');main.classList.remove('hc-motion-ready');main.innerHTML=html;if(!(window.__hcKeepScroll===true))window.scrollTo(0,0);window.__hcKeepScroll=false;try{document.dispatchEvent(new CustomEvent('hc:after-render',{detail:{page:S&&S.page||''}}))}catch(e){var ev=document.createEvent('Event');ev.initEvent('hc:after-render',true,false);document.dispatchEvent(ev)}if(!document.documentElement.classList.contains('hc-ui-motion-gentle')&&!document.documentElement.classList.contains('hc-ui-motion-off'))requestAnimationFrame(function(){main.classList.add('hc-motion-ready')})}"
+    "function M(html){var main=document.getElementById('main');main.classList.remove('hc-motion-ready');main.innerHTML=html;if(!(window.__hcKeepScroll===true))window.scrollTo(0,0);window.__hcKeepScroll=false;Promise.resolve().then(function(){try{document.dispatchEvent(new CustomEvent('hc:after-render',{detail:{page:S&&S.page||''}}))}catch(e){var ev=document.createEvent('Event');ev.initEvent('hc:after-render',true,false);document.dispatchEvent(ev)}if(!document.documentElement.classList.contains('hc-ui-motion-gentle')&&!document.documentElement.classList.contains('hc-ui-motion-off'))requestAnimationFrame(function(){main.classList.add('hc-motion-ready')})})}"
   );
   // Route existing lightweight toast helpers to the native-looking in-app toast.
   out=out.replace(
