@@ -11,6 +11,7 @@ type TgUser={id:number;first_name?:string;last_name?:string;username?:string};
 type Employee={id:number;name:string;role:string;status:'active'|'blocked';addedAt:number};
 type MediaDraft={id:string;type:'photo'|'video';fileId:string;name:string;size:number;addedAt:number};
 type EventItem={type:string;label:string;at:number;userId:number;meta?:Record<string,unknown>};
+type BroadcastDraft={chatId:number;messageId:number;preview:string;kind:string;createdAt:number};
 
 export default{
  async fetch(req:Request,env:Env,ctx?:Ctx):Promise<Response>{
@@ -49,6 +50,8 @@ export class AppState extends BaseAppState{
   if(u.pathname==='/ui'&&req.method==='POST'){const x:any=await req.json();await this.state.storage.put(`ui:${Number(x.id)}`,{messageId:Number(x.messageId),screen:clean(x.screen,40)});return J({ok:true})}
   if(u.pathname==='/ui-pending'&&req.method==='GET'){const id=Number(u.searchParams.get('id'));return J({ok:true,pending:await this.state.storage.get<string>(`uiPending:${id}`)||''})}
   if(u.pathname==='/ui-pending'&&req.method==='POST'){const x:any=await req.json(),k=`uiPending:${Number(x.id)}`;if(x.action)await this.state.storage.put(k,clean(x.action,30));else await this.state.storage.delete(k);return J({ok:true})}
+  if(u.pathname==='/broadcast-draft'&&req.method==='GET'){const id=Number(u.searchParams.get('id'));return J({ok:true,draft:await this.state.storage.get<BroadcastDraft>(`broadcastDraft:${id}`)||null})}
+  if(u.pathname==='/broadcast-draft'&&req.method==='POST'){const x:any=await req.json(),id=Number(x.id),k=`broadcastDraft:${id}`;if(!Number.isSafeInteger(id)||id<=0)return J({ok:false,error:'bad id'},400);if(x.action==='clear'){await this.state.storage.delete(k);return J({ok:true})}const draft:BroadcastDraft={chatId:Number(x.chatId),messageId:Number(x.messageId),preview:clean(x.preview,300),kind:clean(x.kind,40),createdAt:Number(x.createdAt||Date.now())};if(!Number.isSafeInteger(draft.chatId)||!Number.isSafeInteger(draft.messageId)||draft.messageId<=0)return J({ok:false,error:'bad draft'},400);await this.state.storage.put(k,draft);return J({ok:true,draft})}
   return super.fetch(req);
  }
 }
@@ -73,14 +76,160 @@ async function adminReview(req:Request,env:Env){const a=await adminAuth(req,env)
 async function adminMedia(req:Request,env:Env){const a=await adminAuth(req,env);if(!a.ok)return a.response;const u=new URL(req.url),job=clean(u.searchParams.get('job'),100),stage=clean(u.searchParams.get('stage'),20),id=clean(u.searchParams.get('id'),100);if(!job||!['before','after'].includes(stage)||!id)return new Response('Bad request',{status:400});const r=await stateCall(env,`/archive?job=${encodeURIComponent(job)}&stage=${encodeURIComponent(stage)}`),item=(r.files||[]).find((v:MediaDraft)=>v.id===id);if(!item)return new Response('Not found',{status:404});const f=await tgTimeout(env.TELEGRAM_BOT_TOKEN,'getFile',{file_id:item.fileId},7000).catch(()=>null),path=f?.result?.file_path;if(!path)return new Response('Media unavailable',{status:404});const c=new AbortController(),t=setTimeout(()=>c.abort(),12000);try{const rr=await fetch(`https://api.telegram.org/file/bot${env.TELEGRAM_BOT_TOKEN}/${path}`,{signal:c.signal});if(!rr.ok)return new Response('Media unavailable',{status:502});const h=new Headers(rr.headers);h.set('cache-control','private, max-age=60');h.set('x-content-type-options','nosniff');return new Response(rr.body,{status:200,headers:h})}finally{clearTimeout(t)}}
 function publicMedia(x:MediaDraft){return{id:x.id,type:x.type,name:x.name,size:x.size,addedAt:x.addedAt}}
 
-async function webhook(req:Request,env:Env,origin:string){if(env.TELEGRAM_WEBHOOK_SECRET&&!safeEq(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',env.TELEGRAM_WEBHOOK_SECRET))return new Response('Unauthorized',{status:401});let up:any;try{up=await req.json()}catch{return new Response('OK')}const cb=up?.callback_query,m=up?.message,user:TgUser|undefined=cb?.from||m?.from;if(cb?.id&&user?.id){await tgTimeout(env.TELEGRAM_BOT_TOKEN,'answerCallbackQuery',{callback_query_id:cb.id},4000).catch(()=>null);await setUi(env,user.id,Number(cb.message?.message_id||0),'menu');await callback(cb,env,origin).catch(e=>console.error('callback',e));return new Response('OK')}if(!m?.chat?.id||!user?.id)return new Response('OK');const text=String(m.text||'').trim(),cmd=text.replace(/@\w+$/,'').toLowerCase(),pending=await getUiPending(env,user.id);if(pending&&text&&!text.startsWith('/')){await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);await applyEmployeeAction(env,m.chat.id,user.id,pending,text,origin);return new Response('OK')}if(['/start','/menu','/webapp'].includes(cmd)||text==='🏠 Главное меню'){await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);await ensureWebhook(env,origin);await home(env,m.chat.id,user,origin);return new Response('OK')}if(cmd==='/rules'||text==='📋 Правила'){await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);await rules(env,m.chat.id,user,origin);return new Response('OK')}if((cmd==='/admin'||text==='👥 Сотрудники')&&isAdmin(env,user.id)){await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);await staff(env,m.chat.id,user,origin);return new Response('OK')}return photoV15.fetch(new Request(req.url,{method:'POST',headers:req.headers,body:JSON.stringify(up)}),env)}
+async function webhook(req:Request,env:Env,origin:string){
+ if(env.TELEGRAM_WEBHOOK_SECRET&&!safeEq(req.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',env.TELEGRAM_WEBHOOK_SECRET))return new Response('Unauthorized',{status:401});
+ let up:any;try{up=await req.json()}catch{return new Response('OK')}
+ const cb=up?.callback_query,m=up?.message,user:TgUser|undefined=cb?.from||m?.from;
+ if(cb?.id&&user?.id){
+  await tgTimeout(env.TELEGRAM_BOT_TOKEN,'answerCallbackQuery',{callback_query_id:cb.id},4000).catch(()=>null);
+  await setUi(env,user.id,Number(cb.message?.message_id||0),'menu');
+  await callback(cb,env,origin).catch(e=>console.error('callback',e));
+  return new Response('OK');
+ }
+ if(!m?.chat?.id||!user?.id)return new Response('OK');
+ const text=String(m.text||'').trim(),cmd=text.replace(/@\w+$/,'').toLowerCase(),pending=await getUiPending(env,user.id);
 
-async function callback(cb:any,env:Env,origin:string){const user:TgUser=cb.from,chat=cb.message?.chat?.id||user.id,data=String(cb.data||'');if(data==='v17:home')return home(env,chat,user,origin,Number(cb.message?.message_id||0));if(data==='v17:rules')return rules(env,chat,user,origin,Number(cb.message?.message_id||0));if(data==='v17:staff'&&isAdmin(env,user.id))return staff(env,chat,user,origin,Number(cb.message?.message_id||0));if(data==='v17:list'&&isAdmin(env,user.id))return employeeList(env,chat,user,origin,Number(cb.message?.message_id||0));if(isAdmin(env,user.id)&&['add','block','unblock','remove'].some(v=>data==='v17:'+v)){const action=data.split(':')[1];await setUiPending(env,user.id,action);const msg=action==='add'?'Отправьте одним сообщением:\n<code>TELEGRAM_ID Имя Фамилия</code>':`Отправьте Telegram ID сотрудника, которого нужно ${action==='block'?'заблокировать':action==='unblock'?'разблокировать':'удалить'}.`;return editService(env,chat,user.id,Number(cb.message?.message_id||0),`👥 <b>СОТРУДНИКИ</b>\n\n${msg}`,{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'← Назад',callback_data:'v17:staff',style:'primary'}]]}})}}
+ if(isAdmin(env,user.id)&&cmd==='/cancel'&&String(pending).startsWith('broadcast')){
+  await clearBroadcastDraft(env,user.id);
+  await setUiPending(env,user.id,'');
+  const ui=await getUi(env,user.id);
+  await staff(env,m.chat.id,user,origin,Number(ui?.messageId||0));
+  return new Response('OK');
+ }
 
-async function home(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){const access=await accessFor(env,user.id);if(!access.allowed)return editService(env,chat,user.id,messageId||0,`🔒 <b>Доступ закрыт</b>\n\nВаш Telegram ID: <code>${user.id}</code>\nПередайте его администратору House Cleaning.`,{parse_mode:'HTML'});await removeReplyKeyboard(env,chat);const job=(await stateCall(env,'/job?id='+user.id)).job||null,launch=await signLaunch(user,env.TELEGRAM_BOT_TOKEN),appUrl=`${origin}/?launch=${encodeURIComponent(launch)}`,label=job&&job.stage!=='done'?'🧹 Открыть текущую уборку':'🧹 Начать фотоотчёт',status=!job||job.stage==='done'?'Готов к новой уборке':job.stage==='started'?'Ожидаются фото ДО':'Уборка в процессе — ожидаются фото ПОСЛЕ';await tgTimeout(env.TELEGRAM_BOT_TOKEN,'setChatMenuButton',{chat_id:chat,menu_button:{type:'web_app',text:'Фотоотчёты',web_app:{url:appUrl}}},6000).catch(()=>null);const kb:any=[[{text:label,web_app:{url:appUrl},style:'success'}],[{text:'📋 Правила и регламент',callback_data:'v17:rules',style:'primary'}]];if(access.admin)kb.push([{text:'👥 Сотрудники и админ-панель',callback_data:'v17:staff',style:'danger'}]);return editService(env,chat,user.id,messageId||0,`🏠 <b>HOUSE CLEANING · РАБОЧИЙ БОТ</b>\n\n👤 <b>${esc(access.employee?.name||displayName(user))}</b>\n📌 ${esc(status)}\n\n<b>Порядок:</b>\n1️⃣ Клиент и адрес\n2️⃣ Фото/видео ДО + дефекты\n3️⃣ Уборка по регламенту\n4️⃣ Фото/видео ПОСЛЕ\n\nНезавершённая уборка сохраняется автоматически.`,{parse_mode:'HTML',reply_markup:{inline_keyboard:kb}})}
+ if(isAdmin(env,user.id)&&pending==='broadcast'){
+  await captureBroadcastDraft(env,m.chat.id,user,m,origin);
+  return new Response('OK');
+ }
+
+ if(isAdmin(env,user.id)&&pending==='broadcast_confirm'&&text&&!text.startsWith('/')){
+  const ui=await getUi(env,user.id);
+  await editService(env,m.chat.id,user.id,Number(ui?.messageId||0),'📣 <b>Черновик рассылки уже готов</b>\n\nНажмите «Отправить всем», «Изменить сообщение» или «Отмена».',{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'✅ Отправить всем',callback_data:'v17:broadcast_send',style:'success'}],[{text:'✏️ Изменить сообщение',callback_data:'v17:broadcast',style:'primary'}],[{text:'❌ Отмена',callback_data:'v17:broadcast_cancel',style:'danger'}]]}});
+  return new Response('OK');
+ }
+
+ if(pending&&text&&!text.startsWith('/')){
+  await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);
+  await applyEmployeeAction(env,m.chat.id,user.id,pending,text,origin);
+  return new Response('OK');
+ }
+
+ if(['/start','/menu','/webapp'].includes(cmd)||text==='🏠 Главное меню'){
+  await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);
+  await ensureWebhook(env,origin);
+  await home(env,m.chat.id,user,origin);
+  return new Response('OK');
+ }
+ if(cmd==='/rules'||text==='📋 Правила'){
+  await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);
+  await rules(env,m.chat.id,user,origin);
+  return new Response('OK');
+ }
+ if((cmd==='/admin'||text==='👥 Сотрудники')&&isAdmin(env,user.id)){
+  await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);
+  await staff(env,m.chat.id,user,origin);
+  return new Response('OK');
+ }
+ if((cmd==='/broadcast'||text==='📣 Рассылка всем')&&isAdmin(env,user.id)){
+  await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:m.chat.id,message_id:m.message_id},4000).catch(()=>null);
+  await beginBroadcast(env,m.chat.id,user,origin);
+  return new Response('OK');
+ }
+ return photoV15.fetch(new Request(req.url,{method:'POST',headers:req.headers,body:JSON.stringify(up)}),env);
+}
+
+async function callback(cb:any,env:Env,origin:string){
+ const user:TgUser=cb.from,chat=cb.message?.chat?.id||user.id,data=String(cb.data||''),messageId=Number(cb.message?.message_id||0);
+ if(data==='v17:home')return home(env,chat,user,origin,messageId);
+ if(data==='v17:rules')return rules(env,chat,user,origin,messageId);
+ if(data==='v17:staff'&&isAdmin(env,user.id))return staff(env,chat,user,origin,messageId);
+ if(data==='v17:list'&&isAdmin(env,user.id))return employeeList(env,chat,user,origin,messageId);
+ if(data==='v17:broadcast'&&isAdmin(env,user.id))return beginBroadcast(env,chat,user,origin,messageId);
+ if(data==='v17:broadcast_send'&&isAdmin(env,user.id))return sendBroadcastDraft(env,chat,user,origin,messageId);
+ if(data==='v17:broadcast_cancel'&&isAdmin(env,user.id))return cancelBroadcast(env,chat,user,origin,messageId);
+ if(isAdmin(env,user.id)&&['add','block','unblock','remove'].some(v=>data==='v17:'+v)){
+  const action=data.split(':')[1];await setUiPending(env,user.id,action);
+  const msg=action==='add'?'Отправьте одним сообщением:\n<code>TELEGRAM_ID Имя Фамилия</code>':`Отправьте Telegram ID сотрудника, которого нужно ${action==='block'?'заблокировать':action==='unblock'?'разблокировать':'удалить'}.`;
+  return editService(env,chat,user.id,messageId,`👥 <b>СОТРУДНИКИ</b>\n\n${msg}`,{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'← Назад',callback_data:'v17:staff',style:'primary'}]]}});
+ }
+}
+
+async function home(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){
+ const access=await accessFor(env,user.id);
+ if(!access.allowed)return editService(env,chat,user.id,messageId||0,`🔒 <b>Доступ закрыт</b>\n\nВаш Telegram ID: <code>${user.id}</code>\nПередайте его администратору House Cleaning.`,{parse_mode:'HTML'});
+ await removeReplyKeyboard(env,chat);
+ const job=(await stateCall(env,'/job?id='+user.id)).job||null,launch=await signLaunch(user,env.TELEGRAM_BOT_TOKEN),appUrl=`${origin}/?launch=${encodeURIComponent(launch)}`,label=job&&job.stage!=='done'?'🧹 Открыть текущую уборку':'🧹 Начать фотоотчёт',status=!job||job.stage==='done'?'Готов к новой уборке':job.stage==='started'?'Ожидаются фото ДО':'Уборка в процессе — ожидаются фото ПОСЛЕ';
+ await tgTimeout(env.TELEGRAM_BOT_TOKEN,'setChatMenuButton',{chat_id:chat,menu_button:{type:'web_app',text:'Фотоотчёты',web_app:{url:appUrl}}},6000).catch(()=>null);
+ if(access.admin)await tgTimeout(env.TELEGRAM_BOT_TOKEN,'setMyCommands',{scope:{type:'chat',chat_id:chat},commands:[{command:'start',description:'Главное меню'},{command:'admin',description:'Управление сотрудниками'},{command:'broadcast',description:'Рассылка всем пользователям'},{command:'cancel',description:'Отменить текущее действие'}]},6000).catch(()=>null);
+ const kb:any=[[{text:label,web_app:{url:appUrl},style:'success'}],[{text:'📋 Правила и регламент',callback_data:'v17:rules',style:'primary'}]];
+ if(access.admin){
+  kb.push([{text:'📣 Рассылка всем',callback_data:'v17:broadcast',style:'success'}]);
+  kb.push([{text:'👥 Сотрудники и админ-панель',callback_data:'v17:staff',style:'danger'}]);
+ }
+ return editService(env,chat,user.id,messageId||0,`🏠 <b>HOUSE CLEANING · РАБОЧИЙ БОТ</b>\n\n👤 <b>${esc(access.employee?.name||displayName(user))}</b>\n📌 ${esc(status)}\n\n<b>Порядок:</b>\n1️⃣ Клиент и адрес\n2️⃣ Фото/видео ДО + дефекты\n3️⃣ Уборка по регламенту\n4️⃣ Фото/видео ПОСЛЕ\n\nНезавершённая уборка сохраняется автоматически.`,{parse_mode:'HTML',reply_markup:{inline_keyboard:kb}});
+}
 async function rules(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){const access=await accessFor(env,user.id),launch=await signLaunch(user,env.TELEGRAM_BOT_TOKEN),appUrl=`${origin}/?launch=${encodeURIComponent(launch)}`;const kb:any=[[{text:'🧹 Открыть уборку',web_app:{url:appUrl},style:'success'}],[{text:'← Главное меню',callback_data:'v17:home',style:'primary'}]];return editService(env,chat,user.id,messageId||0,`📋 <b>HOUSE CLEANING · РЕГЛАМЕНТ</b>\n\n<b>Перед началом</b>\n• Проверьте клиента, адрес и тип уборки.\n• Фото ДО делаются до основной уборки.\n• Все обнаруженные повреждения фиксируются ДО.\n\n<b>Во время уборки</b>\n• Поверхности и видимые загрязнения.\n• Полы, плинтусы, углы и труднодоступные места.\n• Санузел и мокрые зоны.\n• Кухонная / рабочая зона.\n• Финальный осмотр объекта.\n\n<b>Фото ПОСЛЕ</b>\n• Покажите реальный готовый результат.\n• Старайтесь повторять ракурсы ДО.\n• Проверьте объект до завершения отчёта.\n\n<b>Проблемы</b>\nПовреждение, спор с клиентом или дополнительная работа — сразу сообщите администратору.\n\n⚠️ Обязательный фотоотчёт является частью внутреннего регламента компании.`,{parse_mode:'HTML',reply_markup:{inline_keyboard:kb}})}
-async function staff(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){if(!isAdmin(env,user.id))return;const launch=await signLaunch(user,env.TELEGRAM_BOT_TOKEN),adminUrl=`${origin}/admin?launch=${encodeURIComponent(launch)}`;return editService(env,chat,user.id,messageId||0,'👑 <b>УПРАВЛЕНИЕ HOUSE CLEANING</b>\n\nАдмин-панель показывает все текущие и завершённые заявки, фото ДО/ПОСЛЕ и действия сотрудников.',{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'📊 Открыть админ-панель',web_app:{url:adminUrl},style:'success'}],[{text:'➕ Добавить',callback_data:'v17:add',style:'success'},{text:'📋 Список',callback_data:'v17:list',style:'primary'}],[{text:'🚫 Заблокировать',callback_data:'v17:block',style:'danger'},{text:'✅ Разблокировать',callback_data:'v17:unblock',style:'success'}],[{text:'🗑 Удалить',callback_data:'v17:remove',style:'danger'}],[{text:'← Главное меню',callback_data:'v17:home',style:'primary'}]]}})}
+async function staff(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){
+ if(!isAdmin(env,user.id))return;
+ const launch=await signLaunch(user,env.TELEGRAM_BOT_TOKEN),adminUrl=`${origin}/admin?launch=${encodeURIComponent(launch)}`;
+ return editService(env,chat,user.id,messageId||0,'👑 <b>УПРАВЛЕНИЕ HOUSE CLEANING</b>\n\nАдмин-панель показывает все текущие и завершённые заявки, фото ДО/ПОСЛЕ и действия сотрудников.',{parse_mode:'HTML',reply_markup:{inline_keyboard:[
+  [{text:'📊 Открыть админ-панель',web_app:{url:adminUrl},style:'success'}],
+  [{text:'📣 Рассылка всем',callback_data:'v17:broadcast',style:'success'}],
+  [{text:'➕ Добавить',callback_data:'v17:add',style:'success'},{text:'📋 Список',callback_data:'v17:list',style:'primary'}],
+  [{text:'🚫 Заблокировать',callback_data:'v17:block',style:'danger'},{text:'✅ Разблокировать',callback_data:'v17:unblock',style:'success'}],
+  [{text:'🗑 Удалить',callback_data:'v17:remove',style:'danger'}],
+  [{text:'← Главное меню',callback_data:'v17:home',style:'primary'}]
+ ]}});
+}
 async function employeeList(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){const r=await stateCall(env,'/employees'),a:Employee[]=r.employees||[],txt=a.length?a.map((x,i)=>`${i+1}. ${x.status==='active'?'🟢':'🔴'} <b>${esc(x.name)}</b> · <code>${x.id}</code>`).join('\n'):'Список пуст.';return editService(env,chat,user.id,messageId||0,`👥 <b>СОТРУДНИКИ</b>\n\n${txt}`,{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'← Назад',callback_data:'v17:staff',style:'primary'}]]}})}
+
+async function beginBroadcast(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){
+ await clearBroadcastDraft(env,user.id);
+ await setUiPending(env,user.id,'broadcast');
+ const ids=await broadcastRecipients(env,user.id);
+ return editService(env,chat,user.id,messageId||0,`📣 <b>РАССЫЛКА ВСЕМ</b>\n\nПолучателей сейчас: <b>${ids.length}</b>\n\nОтправьте следующим сообщением то, что нужно разослать: текст, фото, видео или документ.\n\nПосле этого бот покажет подтверждение перед отправкой.`,{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'❌ Отмена',callback_data:'v17:broadcast_cancel',style:'danger'}],[{text:'← Управление',callback_data:'v17:staff',style:'primary'}]]}});
+}
+
+async function captureBroadcastDraft(env:Env,chat:string|number,user:TgUser,m:any,origin:string){
+ const preview=broadcastPreview(m),kind=broadcastKind(m);
+ await stateCall(env,'/broadcast-draft','POST',{id:user.id,chatId:Number(m.chat?.id||chat),messageId:Number(m.message_id),preview,kind,createdAt:Date.now()});
+ await setUiPending(env,user.id,'broadcast_confirm');
+ const ids=await broadcastRecipients(env,user.id),ui=await getUi(env,user.id);
+ return editService(env,chat,user.id,Number(ui?.messageId||0),`📣 <b>ПРОВЕРЬТЕ РАССЫЛКУ</b>\n\nПолучателей: <b>${ids.length}</b>\nТип: <b>${esc(kind)}</b>\n${preview?`Содержимое: <i>${esc(preview)}</i>\n`:''}\nИсходное сообщение оставлено в чате. Отправить его всем?`,{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'✅ Отправить всем',callback_data:'v17:broadcast_send',style:'success'}],[{text:'✏️ Изменить сообщение',callback_data:'v17:broadcast',style:'primary'}],[{text:'❌ Отмена',callback_data:'v17:broadcast_cancel',style:'danger'}]]}});
+}
+
+async function sendBroadcastDraft(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){
+ const got=await stateCall(env,'/broadcast-draft?id='+user.id),draft:BroadcastDraft|null=got?.draft||null;
+ if(!draft){await setUiPending(env,user.id,'');return beginBroadcast(env,chat,user,origin,messageId)}
+ const ids=await broadcastRecipients(env,user.id);
+ if(!ids.length){await clearBroadcastDraft(env,user.id);await setUiPending(env,user.id,'');return editService(env,chat,user.id,messageId||0,'📣 <b>Рассылка не отправлена</b>\n\nНет доступных получателей.',{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'← Управление',callback_data:'v17:staff',style:'primary'}]]}})}
+ await editService(env,chat,user.id,messageId||0,`📤 <b>Отправляю рассылку…</b>\n\nПолучателей: ${ids.length}`,{parse_mode:'HTML',reply_markup:{inline_keyboard:[]}});
+ const results=await Promise.allSettled(ids.map(id=>tgTimeout(env.TELEGRAM_BOT_TOKEN,'copyMessage',{chat_id:id,from_chat_id:draft.chatId,message_id:draft.messageId},12000)));
+ const sent=results.filter(r=>r.status==='fulfilled').length,failed=ids.length-sent,at=Date.now();
+ await stateCall(env,'/opsnotify/broadcast-log','POST',{id:crypto.randomUUID(),at,created_by:user.id,audience:'all_team',title:'Ручная рассылка из Telegram',body:draft.preview||draft.kind,requested:ids.length,sent,failed,employee_ids:ids}).catch(()=>null);
+ await stateCall(env,'/opsfinal/notice','POST',{audience:'admin',level:failed?'warning':'success',title:'Рассылка отправлена',body:`Доставлено ${sent} из ${ids.length}`,at}).catch(()=>null);
+ await clearBroadcastDraft(env,user.id);await setUiPending(env,user.id,'');
+ return editService(env,chat,user.id,messageId||0,`✅ <b>РАССЫЛКА ЗАВЕРШЕНА</b>\n\nПолучателей: <b>${ids.length}</b>\nДоставлено: <b>${sent}</b>\nОшибок: <b>${failed}</b>`,{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'📣 Новая рассылка',callback_data:'v17:broadcast',style:'success'}],[{text:'← Управление',callback_data:'v17:staff',style:'primary'}]]}});
+}
+
+async function cancelBroadcast(env:Env,chat:string|number,user:TgUser,origin:string,messageId?:number){
+ await clearBroadcastDraft(env,user.id);await setUiPending(env,user.id,'');
+ return staff(env,chat,user,origin,messageId);
+}
+
+async function clearBroadcastDraft(env:Env,id:number){await stateCall(env,'/broadcast-draft','POST',{id,action:'clear'}).catch(()=>null)}
+
+async function broadcastRecipients(env:Env,currentAdmin:number){
+ const r=await stateCall(env,'/employees').catch(()=>({employees:[]})),employees:Employee[]=Array.isArray(r?.employees)?r.employees:[];
+ const ids:number[]=[];
+ for(const e of employees){const id=Number(e?.id);if(e?.status==='active'&&Number.isSafeInteger(id)&&id>0)ids.push(id)}
+ for(const raw of adminIds(env)){const id=Number(raw);if(Number.isSafeInteger(id)&&id>0)ids.push(id)}
+ return [...new Set(ids)].filter(id=>id!==currentAdmin).slice(0,200);
+}
+
+function broadcastPreview(m:any){return clean(m?.text||m?.caption||m?.document?.file_name||'',260)}
+function broadcastKind(m:any){if(m?.photo)return'Фото';if(m?.video)return'Видео';if(m?.document)return'Документ';if(m?.animation)return'Анимация';if(m?.voice)return'Голосовое сообщение';if(m?.audio)return'Аудио';if(m?.sticker)return'Стикер';return m?.text?'Текст':'Сообщение'}
+
 async function applyEmployeeAction(env:Env,chat:string|number,adminId:number,action:string,text:string,origin:string){await setUiPending(env,adminId,'');let result='';if(action==='add'){const p=text.split(/\s+/),id=Number(p.shift()),name=p.join(' ').trim();if(!Number.isSafeInteger(id)||!name)result='❌ Неверный формат. Нужны Telegram ID, имя и фамилия.';else{const employee:Employee={id,name:clean(name,100),role:'cleaner',status:'active',addedAt:Date.now()};await stateCall(env,'/employee','POST',{action:'upsert',employee});result=`✅ Добавлен: <b>${esc(employee.name)}</b> · <code>${id}</code>`;await tgTimeout(env.TELEGRAM_BOT_TOKEN,'sendMessage',{chat_id:id,text:'✅ Вам открыт доступ к рабочему боту House Cleaning. Отправьте /start.'},6000).catch(()=>null)}}else{const id=Number(text.trim());if(!Number.isSafeInteger(id))result='❌ Нужен цифровой Telegram ID.';else{const r=await stateCall(env,'/employee','POST',{action,id});result=r.ok?`✅ Выполнено для сотрудника <code>${id}</code>`:'❌ Сотрудник не найден.'}}const ui=await getUi(env,adminId),user:TgUser={id:adminId};await staff(env,chat,user,origin,Number(ui?.messageId||0));if(result){const ui2=await getUi(env,adminId);await editService(env,chat,adminId,Number(ui2?.messageId||0),`👑 <b>УПРАВЛЕНИЕ HOUSE CLEANING</b>\n\n${result}\n\nВыберите следующее действие.`,{parse_mode:'HTML',reply_markup:{inline_keyboard:[[{text:'📊 Админ-панель',web_app:{url:`${origin}/admin?launch=${encodeURIComponent(await signLaunch(user,env.TELEGRAM_BOT_TOKEN))}`},style:'success'}],[{text:'➕ Добавить',callback_data:'v17:add',style:'success'},{text:'📋 Список',callback_data:'v17:list',style:'primary'}],[{text:'🚫 Заблокировать',callback_data:'v17:block',style:'danger'},{text:'✅ Разблокировать',callback_data:'v17:unblock',style:'success'}],[{text:'🗑 Удалить',callback_data:'v17:remove',style:'danger'}],[{text:'← Главное меню',callback_data:'v17:home',style:'primary'}]]}})}}
 
 async function editService(env:Env,chat:string|number,userId:number,messageId:number,text:string,extra:any){let id=messageId||Number((await getUi(env,userId))?.messageId||0);if(id){try{await tgTimeout(env.TELEGRAM_BOT_TOKEN,'editMessageText',{chat_id:chat,message_id:id,text,...extra},6500);await setUi(env,userId,id,'menu');return}catch{}}const old=id;const x=await tgTimeout(env.TELEGRAM_BOT_TOKEN,'sendMessage',{chat_id:chat,text,...extra},6500);id=Number(x?.result?.message_id||0);if(id)await setUi(env,userId,id,'menu');if(old&&old!==id)await tgTimeout(env.TELEGRAM_BOT_TOKEN,'deleteMessage',{chat_id:chat,message_id:old},4000).catch(()=>null)}
