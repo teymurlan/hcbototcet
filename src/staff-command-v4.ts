@@ -82,7 +82,7 @@ const JS=String.raw`
    var sv=t.closest('[data-v4-save]');if(sv){e.preventDefault();saveTemplate(sv.dataset.v4Save,false).catch(function(x){toast(x.message,'error')});return}
    var rs=t.closest('[data-v4-reset]');if(rs){e.preventDefault();var key=rs.dataset.v4Reset,ta=document.querySelector('[data-v4-text="'+key+'"]');if(defaults&&defaults[key]&&ta)ta.value=defaults[key];else toast('Для сброса откройте экран заново','info');return}
    var open=t.closest('[data-order],.hc-client-card,[data-employee]');if(open&&!t.closest('#nav'))capture(activeTab());
-   var back=t.closest('.back,.hc-client-back,.hc-v3-back');if(back){var tab=activeTab();setTimeout(function(){restore(tab)},20)}
+   var back=t.closest('.back,.hc-client-back,.hc-v3-back,.hc-v4-back');if(back){var tab=activeTab();Promise.resolve().then(function(){restore(tab)})}
  },false);
  document.addEventListener('input',function(e){var t=e.target;if(t&&activeTab()==='orders'&&(t.matches('.search')||t.matches('input'))){var v=viewState.orders||{};v.q=t.value;viewState.orders=v;save()}},false);
  document.addEventListener('hc:after-render',function(){queue()},false);window.addEventListener('pageshow',queue);document.addEventListener('visibilitychange',function(){if(!document.hidden)queue()});queue();
