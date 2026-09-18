@@ -7,6 +7,9 @@ const v3=fs.readFileSync('src/staff-command-v3.ts','utf8');
 const v4=fs.readFileSync('src/staff-command-v4.ts','utf8');
 const v5=fs.readFileSync('src/staff-command-v5.ts','utf8');
 const control=fs.readFileSync('src/staff-control-center.ts','utf8');
+const runtimeUi=fs.readFileSync('src/staff-runtime-ui.ts','utf8');
+const runtime=fs.readFileSync('src/staff-runtime.ts','utf8');
+const operations=fs.readFileSync('src/staff-operations.ts','utf8');
 
 test('dashboard uses vector quick actions and actionable metric drilldowns',()=>{
   for(const token of ['hcQuickSvg','data-v4-metric="today"','data-v4-metric="unassigned"','data-v4-metric="work"','data-v4-metric="employees"']) assert.ok(finalUi.includes(token),token);
@@ -41,4 +44,29 @@ test('motion-off remains a supported persisted app setting',()=>{
   assert.ok(v5.includes("motion:['gentle','full','off']"));
   assert.ok(v5.includes("data-v5-value=\"off\">Без"));
   assert.ok(control.includes("type UiMotion='gentle'|'full'|'off'"));
+});
+
+
+test('orders opened from Overview use the direct bridge without flashing the Orders list',()=>{
+  assert.ok(finalUi.includes('window.__hcOpenOrderDirect=function'));
+  assert.ok(finalUi.includes("S.page='orders';nav();return orderDetail(n)"));
+  assert.ok(v4.includes("window.__hcOpenOrderDirect(number,'home')"));
+  assert.ok(runtimeUi.includes("window.__hcOpenOrderDirect(String(n),'home')"));
+  assert.ok(finalUi.includes("hcBackTarget==='home'?'← Обзор':'← К заказам'"));
+});
+
+test('current photo catalog exposes working accept and redo controls',()=>{
+  for(const token of ['hcV4Accept','hcV4Redo','hcV4RedoReason','hcV4RedoSend',"/api/staff/report/review","action:'accept'","action:'redo'",'photoJobs=null']) assert.ok(v4.includes(token),token);
+  assert.ok(v4.includes('Принять работу'));
+  assert.ok(v4.includes('Отправить сотруднику на повтор'));
+  assert.ok(v4.includes('Что именно сотруднику нужно исправить?'));
+});
+
+test('photo review API supports accept and redo and multi-report reset',()=>{
+  assert.ok(runtime.includes("u.pathname==='/api/staff/report/review'"));
+  assert.ok(runtime.includes("['accept','redo'].includes(action)"));
+  assert.ok(runtime.includes("action==='redo'&&reason.length<3"));
+  assert.ok(operations.includes("u.pathname === '/api/staff/report/review'"));
+  assert.ok(operations.includes("stage:'before_sent'"));
+  assert.ok(operations.includes("afterCount:0"));
 });
