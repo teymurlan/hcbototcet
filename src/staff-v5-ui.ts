@@ -18,7 +18,7 @@ const NAV_POLISH = String.raw`
     more:'<svg viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>'
   };
   function paint(){document.querySelectorAll('#nav button[data-n]').forEach(function(b){var i=b.querySelector('i'),k=b.getAttribute('data-n');if(i&&icons[k]&&i.getAttribute('data-hc5')!=='1'){i.innerHTML=icons[k];i.setAttribute('data-hc5','1')}})}
-  paint();new MutationObserver(paint).observe(document.documentElement,{childList:true,subtree:true});
+  paint();document.addEventListener('hc:after-render',paint,false);document.addEventListener('click',function(e){var t=e.target;if(t&&t.closest&&t.closest('#nav button'))requestAnimationFrame(paint)},false);window.addEventListener('pageshow',paint);
 })();
 </script>`;
 
