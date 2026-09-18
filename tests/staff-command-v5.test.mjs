@@ -40,7 +40,7 @@ test('orders keep query and filter in the core render instead of visibly resetti
   assert.ok(finalUi.includes("hcOrderQuery=''"));
   assert.ok(finalUi.includes("allowed=['active','today','unassigned','assigned','work','done','cancelled','all']"));
   assert.ok(finalUi.includes("value=\"'+H(hcOrderQuery)+'\""));
-  assert.ok(finalUi.includes("if(allowed.indexOf(S.filter)<0)S.filter='all'"));
+  assert.ok(finalUi.includes("if(allowed.indexOf(S.filter)<0)S.filter='active'"));
   assert.ok(finalUi.includes('hcOrderQuery=inp.value||'));
 });
 
