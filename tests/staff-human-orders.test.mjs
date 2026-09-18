@@ -121,7 +121,7 @@ test('gallery media fades after actual load and reduced motion always keeps medi
 });
 
 test('staff identity header is sticky in normal layout and never reserves a fixed overlay gap',()=>{
-  for(const token of ['.app{padding-top:0!important}', '.top{position:sticky!important','top:0!important','left:auto!important','width:auto!important','transform:none!important','.back{position:relative!important','top:auto!important']) assert.ok(motion.includes(token),token);
+  for(const token of ['.app{padding-top:0!important}', '.top{position:sticky!important','top:0!important','left:auto!important','width:auto!important','transform:none!important',':is(.back,.hc-v3-back,.hc-client-back,.hc-v4-back){position:sticky!important','top:8px!important']) assert.ok(motion.includes(token),token);
   assert.ok(!motion.includes('.top{position:fixed!important'));
   assert.ok(!motion.includes('--hc-staff-header-h'));
   assert.ok(server.includes('sticky_staff_header:true'));
