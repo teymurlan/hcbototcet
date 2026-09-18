@@ -192,8 +192,8 @@ const JS=String.raw`
    var pref=t.closest('[data-v5-pref]');if(pref){e.preventDefault();selectPreference(pref.dataset.v5Pref,pref.dataset.v5Value);return}
    if(t.closest('[data-v5-dash-save]')){e.preventDefault();saveDashboard();return}
    if(t.closest('[data-v5-dash-close]')){e.preventDefault();closeDashboardSheet(true);return}
-   if(t.closest('[data-v5-orders-refresh]')){e.preventDefault();var y=window.scrollY||0;ordersPending=false;navTo('orders');requestAnimationFrame(function(){requestAnimationFrame(function(){window.scrollTo(0,y)})});return}
-   setTimeout(queue,0);
+   if(t.closest('[data-v5-orders-refresh]')){e.preventDefault();var y=window.scrollY||0;ordersPending=false;window.__hcKeepScroll=true;navTo('orders');Promise.resolve().then(function(){window.scrollTo(0,y)});return}
+   Promise.resolve().then(queue);
  },false);
  document.addEventListener('change',function(e){var t=e.target;if(!t)return;
    if(t.matches('[data-v5-setting]')){var next=Object.assign({},settings||{});next[t.dataset.v5Setting]=!!t.checked;saveSettings(next).catch(function(x){t.checked=!t.checked;toast(x.message,'error')});return}
