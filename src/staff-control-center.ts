@@ -21,7 +21,10 @@ type NotifySettings={
 type TemplateKey='new_order'|'order_changed'|'order_cancelled'|'defects'|'finance_changes'|'broadcast';
 type NotifyTemplates=Record<TemplateKey,string>;
 type DashboardStyle='balanced'|'compact'|'focus';
-type DashboardPreferences={style:DashboardStyle;updated_at:number};
+type UiDensity='comfortable'|'compact';
+type UiMotion='gentle'|'full'|'off';
+type UiText='normal'|'large';
+type DashboardPreferences={style:DashboardStyle;density:UiDensity;motion:UiMotion;text:UiText;updated_at:number};
 type BroadcastRecord={
   id:string;at:number;created_at:string;created_by:number;audience:string;title:string;body:string;
   requested:number;sent:number;failed:number;employee_ids:number[];
@@ -86,7 +89,7 @@ export default {
     const u=new URL(req.url);
     if(req.method==='GET'&&u.pathname==='/__hc_staff_version'){
       const base=await clients.fetch(req,env,ctx as any).catch(()=>null);let info:any={};try{if(base)info=await base.json()}catch{}
-      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,editable_notification_templates:true,notification_template_test:true,dashboard_style_picker:true,automatic_manager_notification_settings:true,logic_unchanged:true});
+      return J({...info,ok:true,build:BUILD,notification_control_center:true,manual_staff_broadcast:true,owner_notification_settings:true,editable_notification_templates:true,notification_template_test:true,dashboard_style_picker:true,app_customization:true,stability_v6:true,automatic_manager_notification_settings:true,logic_unchanged:true});
     }
     if(u.pathname==='/api/staff/notification-settings'){
       const auth=await ownerAuth(req,env,ctx);if(!auth.ok)return auth.response;
@@ -311,7 +314,7 @@ function templatePlaceholders(){return{new_order:['order','date','time','address
 function sanitizeTemplates(v:any):Partial<NotifyTemplates>{const out:Partial<NotifyTemplates>={};for(const k of Object.keys(defaultTemplates()) as TemplateKey[]){if(v?.[k]!==undefined){const s=String(v[k]??'').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,'').trim().slice(0,1800);if(s)out[k]=s}}return out}
 function renderTemplate(template:string,values:Record<string,any>){let out=esc(template);for(const [k,v] of Object.entries(values||{})){const safe=esc(v??'');out=out.split(`{${k}}`).join(safe)}return out.replace(/\s+·\s*$/gm,'').replace(/\n{3,}/g,'\n\n').trim()}
 function sanitizeSettings(v:any):NotifySettings{const d=defaultSettings();return{new_order:v?.new_order!==undefined?!!v.new_order:d.new_order,order_changed:v?.order_changed!==undefined?!!v.order_changed:d.order_changed,order_cancelled:v?.order_cancelled!==undefined?!!v.order_cancelled:d.order_cancelled,defects:v?.defects!==undefined?!!v.defects:d.defects,finance_changes:v?.finance_changes!==undefined?!!v.finance_changes:d.finance_changes}}
-function sanitizeDashboard(v:any):DashboardPreferences{const style:DashboardStyle=['balanced','compact','focus'].includes(String(v?.style))?v.style:'balanced';return{style,updated_at:Number(v?.updated_at||Date.now())}}
+function sanitizeDashboard(v:any):DashboardPreferences{const style:DashboardStyle=['balanced','compact','focus'].includes(String(v?.style))?v.style:'balanced',density:UiDensity=['comfortable','compact'].includes(String(v?.density))?v.density:'comfortable',motion:UiMotion=['gentle','full','off'].includes(String(v?.motion))?v.motion:'gentle',text:UiText=['normal','large'].includes(String(v?.text))?v.text:'normal';return{style,density,motion,text,updated_at:Number(v?.updated_at||Date.now())}}
 async function stateCall(env:Env,path:string,method='GET',body?:any){const r=await stateRaw(env,path,method,body);return await r.json().catch(()=>({}))}
 async function stateRaw(env:Env,path:string,method='GET',body?:any){const id=(env as any).STATE.idFromName('global'),stub=(env as any).STATE.get(id);return stub.fetch('https://state.local'+path,{method,headers:body===undefined?undefined:{'content-type':'application/json'},body:body===undefined?undefined:JSON.stringify(body)})}
 async function proxy(r:Response){const x=await r.text();return new Response(x,{status:r.status,headers:{'content-type':'application/json; charset=utf-8','cache-control':'no-store','x-content-type-options':'nosniff'}})}

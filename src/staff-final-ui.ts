@@ -10,7 +10,7 @@ const FINAL_CSS = String.raw`
 
 const FINAL_PATCH = String.raw`
 /* FINAL PATCH — runs inside the main STAFF closure */
-var hcTaskFilter='upcoming',hcOrderQuery='',hcMediaUrls=[],hcViewerItems=[],hcViewerIndex=0,hcRefreshing=false;
+var hcTaskFilter='upcoming',hcOrderQuery='',hcMediaUrls=[],hcViewerItems=[],hcViewerIndex=0,hcRefreshing=false,hcLastRefresh=0;
 function hcAddress(o){return [o&&o.city,o&&o.address,o&&o.apartment?('кв./офис '+o.apartment):''].filter(Boolean).join(', ')||'Адрес не указан'}
 function hcTeam(o){return o&&o.staff&&Array.isArray(o.staff.assigned)?o.staff.assigned:[]}
 function hcMyRate(o){var id=Number(S.state&&S.state.employee&&S.state.employee.id),a=hcTeam(o).find(function(x){return Number(x.id)===id});return a?Number(a.rate_value||0):0}
@@ -24,7 +24,7 @@ function hcHistory(rows){if(!rows||!rows.length)return '<div class="empty">Оп�
 
 nav=function(){var admin=S.state&&S.state.admin;var items=admin?[['home','⌂','Обзор'],['orders','▤','Заказы'],['employees','◎','Сотрудники'],['photos','▧','Фото'],['more','•••','Ещё']]:[['home','⌂','Главная'],['tasks','▤','Задания'],['photos','▧','Фото'],['standards','✓','Стандарты'],['profile','◎','Профиль']];var n=document.getElementById('nav'),box=document.getElementById('navin');box.innerHTML=items.map(function(x){return '<button data-n="'+x[0]+'" class="'+(S.page===x[0]?'on':'')+'"><i>'+x[1]+'</i>'+x[2]+'</button>'}).join('');box.querySelectorAll('button').forEach(function(b){b.onclick=function(){go(b.dataset.n)}});n.classList.remove('hide')};
 
-go=async function(p){S.page=p;nav();if(S.state.admin){if(p==='home')return home();if(p==='orders')return orders();if(p==='employees')return employees();if(p==='photos')return photos();if(p==='more')return more()}else{if(p==='home')return workerHome();if(p==='tasks')return workerTasks();if(p==='photos')return workerPhotos();if(p==='standards')return standards();if(p==='profile')return profile()}};
+go=async function(p){S.page=p;nav();var out;if(S.state.admin){if(p==='home')out=home();else if(p==='orders')out=orders();else if(p==='employees')out=employees();else if(p==='photos')out=photos();else if(p==='more')out=more()}else{if(p==='home')out=workerHome();else if(p==='tasks')out=workerTasks();else if(p==='photos')out=workerPhotos();else if(p==='standards')out=standards();else if(p==='profile')out=profile()}setTimeout(function(){hcRefreshLive(false)},0);return out};
 
 attention=function(){var now=Date.now(),a=[];S.orders.forEach(function(o){if(['CANCELLED','COMPLETED'].indexOf(o.status)>=0)return;var ass=hcTeam(o),ts=Date.parse(String(o.date||'')+'T'+String(o.time||'00:00')+':00+03:00'),addr=hcAddress(o);if(!ass.length&&isFinite(ts)&&ts-now<2*3600000&&ts>now)a.push(['red',addr+' · через '+Math.max(1,Math.round((ts-now)/3600000))+' ч — команда не назначена',o.order_number]);else if(!ass.length)a.push(['red',addr+' · нет назначенной команды',o.order_number]);else if(ass.length&&isFinite(ts)&&ts-now<45*60000&&ts>now){var un=ass.filter(function(x){return !(o.staff.confirmed&&o.staff.confirmed[x.id])});if(un.length)a.push(['',addr+' · не подтвердили выход: '+un.map(function(x){return x.name}).join(', '),o.order_number])}});S.reports.filter(function(r){return r.stage==='done'&&!r.staff_verified}).slice(0,3).forEach(function(r){a.push(['','Фотоотчёт '+(r.address||r.reportId||r.id)+' ждёт проверки',''])});return a.slice(0,8)};
 
@@ -76,8 +76,8 @@ async function notificationsFinal(){try{var x=await api('/api/staff/notification
 
 more=async function(){M('<div class="section-title"><h2>Ещё</h2><span>Управление компанией</span></div><div class="grid"><button class="card" id="fin" style="text-align:left"><div class="title">₽ Финансы</div><div class="sub">Начисления и выплаты</div></button><button class="card" id="hire" style="text-align:left"><div class="title">＋ Найм</div><div class="sub">Кандидаты и онбординг</div></button><button class="card" id="sched" style="text-align:left"><div class="title">◷ График команды</div><div class="sub">Загрузка сотрудников</div></button><button class="card" id="notices" style="text-align:left"><div class="title">● Уведомления</div><div class="sub">Новые, отменённые и изменённые заказы</div></button><button class="card" id="regs" style="text-align:left"><div class="title">✓ Стандарты</div><div class="sub">Регламент HOUSE CLEANING</div></button></div><div class="section-title"><h2>Контроль</h2></div><div class="card"><div class="title">Журнал действий</div><div class="sub">Назначения, подтверждения, начало работы, фото, выплаты и приёмка сохраняются с датой.</div></div><div class="card"><div class="title">Закрытый заказ защищён</div><div class="sub">После приёмки руководителем сотрудник не сможет изменить чек-лист, фото или статус даже со старого открытого экрана.</div></div>');document.getElementById('fin').onclick=finance;document.getElementById('hire').onclick=hiring;document.getElementById('sched').onclick=scheduleAdmin;document.getElementById('notices').onclick=notificationsFinal;document.getElementById('regs').onclick=standards};
 
-async function hcRefreshLive(){if(hcRefreshing||document.hidden||Q.get('onboarding')==='1')return;hcRefreshing=true;try{S.state=await api('/api/state');if(S.state.admin){await reloadAdmin();if(!document.querySelector('.back')&&S.page==='home')await home();else if(!document.querySelector('.back')&&S.page==='orders'){try{document.dispatchEvent(new CustomEvent('hc:orders-data-ready'))}catch(e){}}}else{await loadWorker();if(!document.querySelector('.back')&&S.page==='home')workerHome();else if(!document.querySelector('.back')&&S.page==='tasks')workerTasks()}}catch(e){}finally{hcRefreshing=false}}
-setInterval(hcRefreshLive,15000);document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(hcRefreshLive,250)});window.addEventListener('focus',function(){setTimeout(hcRefreshLive,250)});
+async function hcRefreshLive(force){var now=Date.now();if(hcRefreshing||document.hidden||Q.get('onboarding')==='1'||(!force&&now-hcLastRefresh<30000))return;hcRefreshing=true;try{S.state=await api('/api/state');if(S.state.admin)await reloadAdmin();else await loadWorker();hcLastRefresh=Date.now();try{document.dispatchEvent(new CustomEvent('hc:data-ready',{detail:{page:S.page||'',admin:!!S.state.admin}}));if(S.state.admin&&S.page==='orders')document.dispatchEvent(new CustomEvent('hc:orders-data-ready'))}catch(e){}}catch(e){}finally{hcRefreshing=false}}
+setInterval(function(){hcRefreshLive(false)},30000);document.addEventListener('visibilitychange',function(){if(!document.hidden)setTimeout(function(){hcRefreshLive(true)},250)});window.addEventListener('focus',function(){setTimeout(function(){hcRefreshLive(true)},250)});
 `;
 
 const FINAL_END = String.raw`
@@ -85,7 +85,7 @@ ${FINAL_CSS}
 <script>(function(){
 var book='<svg viewBox="0 0 24 24"><path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H11v18H6.5A2.5 2.5 0 0 0 4 22V4.5Z"/><path d="M20 4.5A2.5 2.5 0 0 0 17.5 2H13v18h4.5A2.5 2.5 0 0 1 20 22V4.5Z"/></svg>';
 function paintStandards(){document.querySelectorAll('#nav button[data-n="standards"] i').forEach(function(i){if(i.dataset.hcfinal)return;i.innerHTML=book;i.dataset.hcfinal='1'})}
-paintStandards();new MutationObserver(paintStandards).observe(document.documentElement,{childList:true,subtree:true});
+paintStandards();document.addEventListener('hc:after-render',paintStandards,false);window.addEventListener('pageshow',paintStandards);
 })();</script>`;
 
 const anchor = 'boot();\n})();\n</script>';
