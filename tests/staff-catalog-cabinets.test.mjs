@@ -57,7 +57,7 @@ test('redesign remains event driven and adds no DOM polling',()=>{
   assert.ok(!code.includes('MutationObserver'));
   assert.ok(!code.includes('setInterval('));
   assert.ok(code.includes("document.addEventListener('hc:after-render'"));
-  assert.ok(code.includes('requestAnimationFrame'));
+  assert.ok(code.includes('try{decorate()}finally{queued=false}'));
   assert.ok(code.includes('prefers-reduced-motion:reduce'));
 });
 
