@@ -61,7 +61,7 @@ test('owner can customize app layout density and motion inside STAFF',()=>{
   for(const token of ['Настроить приложение','hcV5AppSettings','data-v5-pref="density"','data-v5-pref="motion"','hc-ui-density-compact','hc-ui-motion-gentle','hc-ui-motion-off']) assert.ok(v5.includes(token),token);
   for(const token of ["type UiDensity='comfortable'|'compact'","type UiMotion='gentle'|'full'|'off'","app_customization:true","stability_v6:true"]) assert.ok(control.includes(token),token);
   assert.ok(control.includes("motion:UiMotion=['gentle','full','off'].includes"));
-  assert.ok(control.includes("?'gentle'"));
+  assert.ok(control.includes("v.motion:'gentle'"));
 });
 
 test('gentle motion is the default and disables expensive card staggering',()=>{
